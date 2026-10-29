@@ -1,4 +1,4 @@
--- IzttNick Hub | Full Script with ESP, Aimbot, Visuals, and Auto Skill Spammer
+-- IzttNick Hub | Optimized Script with Lag-Free Auto Generator Skill Check
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -67,10 +67,8 @@ local aimSmoothness = 0.2
 local teamCheck = true
 local wallCheck = false
 
--- Auto Skill / Combat Macro State
-local autoSkillEnabled = false
-local skillDelay = 0.5
-local selectedSkills = {Z = false, X = false, C = false, V = false}
+-- Optimized Auto Generator Skill Check State
+local autoCheckEnabled = false
 
 -- Drawing FOV Circle
 local FOVCircle = Drawing.new("Circle")
@@ -100,18 +98,26 @@ LP.CharacterAdded:Connect(function(char)
     setupCharacter(char)
 end)
 
--- Auto Skill Spammer Loop
+-- Lag-Free Optimized Skill Check Loop (Runs efficiently every 0.12 seconds)
 task.spawn(function()
+    local playerGui = LP:WaitForChild("PlayerGui")
     while true do
-        task.wait(skillDelay)
-        if autoSkillEnabled and LP.Character and LP.Character:FindFirstChild("Humanoid") and LP.Character.Humanoid.Health > 0 then
-            for key, enabled in pairs(selectedSkills) do
-                if enabled then
-                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[key], false, game)
-                    task.wait(0.05)
-                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[key], false, game)
+        task.wait(0.12)
+        if autoCheckEnabled then
+            pcall(function()
+                for _, gui in ipairs(playerGui:GetDescendants()) do
+                    if gui:IsA("TextButton") or gui:IsA("ImageButton") then
+                        local name = gui.Name:lower()
+                        if name:find("skillcheck") or name:find("check") or name:find("target") or name:find("circle") then
+                            if gui.Visible then
+                                VirtualInputManager:SendMouseButtonEvent(gui.AbsolutePosition.X + (gui.AbsoluteSize.X / 2), gui.AbsolutePosition.Y + (gui.AbsoluteSize.Y / 2), 0, true, game, 0)
+                                task.wait(0.02)
+                                VirtualInputManager:SendMouseButtonEvent(gui.AbsolutePosition.X + (gui.AbsoluteSize.X / 2), gui.AbsolutePosition.Y + (gui.AbsoluteSize.Y / 2), 0, false, game, 0)
+                            end
+                        end
+                    end
                 end
-            end
+            end)
         end
     end
 end)
@@ -167,6 +173,14 @@ Main:CreateToggle({
     CurrentValue = false,
     Callback = function(value)
         noclipEnabled = value
+    end
+})
+
+Main:CreateToggle({
+    Name = "Auto Generator Skill Check (Low Lag)",
+    CurrentValue = false,
+    Callback = function(value)
+        autoCheckEnabled = value
     end
 })
 
@@ -355,57 +369,6 @@ Combat:CreateToggle({
     CurrentValue = false,
     Callback = function(value)
         wallCheck = value
-    end
-})
-
--- Auto Skill Spammer Controls in Combat Tab
-Combat:CreateToggle({
-    Name = "Auto Skill Spammer",
-    CurrentValue = false,
-    Callback = function(value)
-        autoSkillEnabled = value
-    end
-})
-
-Combat:CreateToggle({
-    Name = "Use Skill Z",
-    CurrentValue = false,
-    Callback = function(value)
-        selectedSkills.Z = value
-    end
-})
-
-Combat:CreateToggle({
-    Name = "Use Skill X",
-    CurrentValue = false,
-    Callback = function(value)
-        selectedSkills.X = value
-    end
-})
-
-Combat:CreateToggle({
-    Name = "Use Skill C",
-    CurrentValue = false,
-    Callback = function(value)
-        selectedSkills.C = value
-    end
-})
-
-Combat:CreateToggle({
-    Name = "Use Skill V",
-    CurrentValue = false,
-    Callback = function(value)
-        selectedSkills.V = value
-    end
-})
-
-Combat:CreateSlider({
-    Name = "Skill Delay (Seconds)",
-    Range = {0.1, 2.0},
-    Increment = 0.1,
-    CurrentValue = 0.5,
-    Callback = function(value)
-        skillDelay = value
     end
 })
 
