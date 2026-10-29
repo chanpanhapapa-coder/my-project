@@ -1,8 +1,9 @@
--- IzttNick Hub | Fully Fixed & Complete Edition for Xeno
+-- IzttNick Hub | Full Script with ESP, Aimbot, Visuals, and Auto Skill Spammer
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local LP = Players.LocalPlayer
 local Mouse = LP:GetMouse()
@@ -34,7 +35,6 @@ local walkSpeedValue, jumpPowerValue = 16, 50
 local flySpeed, flying = 50, false
 local flyConnection, flyVelocity, flyGyro
 local noclipEnabled = false
-local noclipConnection
 
 -- ESP States
 local espEnabled = false
@@ -67,6 +67,11 @@ local aimSmoothness = 0.2
 local teamCheck = true
 local wallCheck = false
 
+-- Auto Skill / Combat Macro State
+local autoSkillEnabled = false
+local skillDelay = 0.5
+local selectedSkills = {Z = false, X = false, C = false, V = false}
+
 -- Drawing FOV Circle
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
@@ -95,48 +100,24 @@ LP.CharacterAdded:Connect(function(char)
     setupCharacter(char)
 end)
 
--- Permanent Movement Enforcement
-RunService.Heartbeat:Connect(function()
-    if humanoid and humanoid.Parent then
-        humanoid.UseJumpPower = true
-        humanoid.WalkSpeed = walkSpeedValue
-        humanoid.JumpPower = jumpPowerValue
+-- Auto Skill Spammer Loop
+task.spawn(function()
+    while true do
+        task.wait(skillDelay)
+        if autoSkillEnabled and LP.Character and LP.Character:FindFirstChild("Humanoid") and LP.Character.Humanoid.Health > 0 then
+            for key, enabled in pairs(selectedSkills) do
+                if enabled then
+                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[key], false, game)
+                    task.wait(0.05)
+                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[key], false, game)
+                end
+            end
+        end
     end
 end)
 
--- Walk Speed
-Main:CreateInput({
-    Name = "Walk Speed (1-300)",
-    PlaceholderText = "16",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text)
-        local value = tonumber(text)
-        if not value then return end
-        walkSpeedValue = math.clamp(math.floor(value), 1, 300)
-        if humanoid and humanoid.Parent then
-            humanoid.WalkSpeed = walkSpeedValue
-        end
-    end
-})
-
--- Jump Power
-Main:CreateInput({
-    Name = "Jump Power (1-300)",
-    PlaceholderText = "50",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text)
-        local value = tonumber(text)
-        if not value then return end
-        jumpPowerValue = math.clamp(math.floor(value), 1, 300)
-        if humanoid and humanoid.Parent then
-            humanoid.UseJumpPower = true
-            humanoid.JumpPower = jumpPowerValue
-        end
-    end
-})
-
--- Noclip System
-noclipConnection = RunService.Stepped:Connect(function()
+-- Robust Movement & Noclip Enforcement
+RunService.Stepped:Connect(function()
     if noclipEnabled and character then
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") then
@@ -145,6 +126,41 @@ noclipConnection = RunService.Stepped:Connect(function()
         end
     end
 end)
+
+RunService.Heartbeat:Connect(function()
+    if humanoid and humanoid.Parent then
+        humanoid.UseJumpPower = true
+        if humanoid.WalkSpeed ~= walkSpeedValue then
+            humanoid.WalkSpeed = walkSpeedValue
+        end
+        if humanoid.JumpPower ~= jumpPowerValue then
+            humanoid.JumpPower = jumpPowerValue
+        end
+    end
+end)
+
+-- Main Tab UI
+Main:CreateInput({
+    Name = "Walk Speed (1-300)",
+    PlaceholderText = "16",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text)
+        local value = tonumber(text)
+        if not value then return end
+        walkSpeedValue = math.clamp(math.floor(value), 1, 300)
+    end
+})
+
+Main:CreateInput({
+    Name = "Jump Power (1-300)",
+    PlaceholderText = "50",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text)
+        local value = tonumber(text)
+        if not value then return end
+        jumpPowerValue = math.clamp(math.floor(value), 1, 300)
+    end
+})
 
 Main:CreateToggle({
     Name = "Noclip",
@@ -280,6 +296,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+-- Combat Tab UI Controls
 Combat:CreateToggle({
     Name = "Enable Auto Aim",
     CurrentValue = false,
@@ -338,6 +355,57 @@ Combat:CreateToggle({
     CurrentValue = false,
     Callback = function(value)
         wallCheck = value
+    end
+})
+
+-- Auto Skill Spammer Controls in Combat Tab
+Combat:CreateToggle({
+    Name = "Auto Skill Spammer",
+    CurrentValue = false,
+    Callback = function(value)
+        autoSkillEnabled = value
+    end
+})
+
+Combat:CreateToggle({
+    Name = "Use Skill Z",
+    CurrentValue = false,
+    Callback = function(value)
+        selectedSkills.Z = value
+    end
+})
+
+Combat:CreateToggle({
+    Name = "Use Skill X",
+    CurrentValue = false,
+    Callback = function(value)
+        selectedSkills.X = value
+    end
+})
+
+Combat:CreateToggle({
+    Name = "Use Skill C",
+    CurrentValue = false,
+    Callback = function(value)
+        selectedSkills.C = value
+    end
+})
+
+Combat:CreateToggle({
+    Name = "Use Skill V",
+    CurrentValue = false,
+    Callback = function(value)
+        selectedSkills.V = value
+    end
+})
+
+Combat:CreateSlider({
+    Name = "Skill Delay (Seconds)",
+    Range = {0.1, 2.0},
+    Increment = 0.1,
+    CurrentValue = 0.5,
+    Callback = function(value)
+        skillDelay = value
     end
 })
 
