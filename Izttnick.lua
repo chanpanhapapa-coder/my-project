@@ -1,4 +1,4 @@
--- IzttNick Hub | Optimized Script with Lag-Free Auto Generator Skill Check
+-- IzttNick Hub | Optimized Script with Skill Check, Teleports, Waypoints, & Hub Features
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -27,6 +27,8 @@ local Combat = Window:CreateTab("Combat", 4483362458)
 local Visuals = Window:CreateTab("Visuals", 4483362458)
 local Perf = Window:CreateTab("Performance", 4483362458)
 local Cross = Window:CreateTab("Crosshair", 4483362458)
+local TeleportTab = Window:CreateTab("Teleport", 4483362458)
+local WaypointTab = Window:CreateTab("Waypoints", 4483362458)
 local KeybindTab = Window:CreateTab("Keybinds", 4483362458)
 
 -- State Variables
@@ -50,6 +52,33 @@ local snaplineObjects = {}
 local espColor = Color3.fromRGB(255, 40, 40)
 local skeletonColor = Color3.fromRGB(0, 255, 255)
 local snaplineColor = Color3.fromRGB(255, 255, 255)
+
+-- Teleport & Waypoint State Storage
+local selectedPlayerName = nil
+local savedWaypoints = {}
+local waypointNameToSave = ""
+local selectedWaypointName = nil
+
+local function getPlayerList()
+    local playerNames = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LP then
+            table.insert(playerNames, player.Name)
+        end
+    end
+    return playerNames
+end
+
+local function getWaypointList()
+    local names = {}
+    for name, _ in pairs(savedWaypoints) do
+        table.insert(names, name)
+    end
+    if #names == 0 then
+        table.insert(names, "No Waypoints Saved")
+    end
+    return names
+end
 
 -- Keybind Manager Config
 local keybinds = {
@@ -724,6 +753,197 @@ Cross:CreateDropdown({
     end
 })
 
+-- Teleport Tab UI Controls
+local TeleportSection = TeleportTab:CreateSection("Player Teleport")
+
+local PlayerDropdown = TeleportTab:CreateDropdown({
+    Name = "Select Player",
+    Options = getPlayerList(),
+    CurrentOption = "",
+    MultipleOptions = false,
+    Flag = "SelectedPlayerDropdown",
+    Callback = function(Option)
+        if type(Option) == "table" then
+            selectedPlayerName = Option[1]
+        else
+            selectedPlayerName = Option
+        end
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Refresh Player List",
+    Callback = function()
+        PlayerDropdown:Refresh(getPlayerList(), true)
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Teleport to Player",
+    Callback = function()
+        if not selectedPlayerName or selectedPlayerName == "" then
+            Rayfield:Notify({
+                Title = "Teleport Error",
+                Content = "Please select a player from the dropdown first.",
+                Duration = 3,
+                Image = 4483362458,
+            })
+            return
+        end
+
+        local targetPlayer = Players:FindFirstChild(selectedPlayerName)
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                LP.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                Rayfield:Notify({
+                    Title = "Teleport Success",
+                    Content = "Teleported to " .. selectedPlayerName,
+                    Duration = 3,
+                    Image = 4483362458,
+                })
+            end
+        else
+            Rayfield:Notify({
+                Title = "Teleport Error",
+                Content = "Target player is not in game or missing character.",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Teleport Back to Spawn",
+    Callback = function()
+        if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+            local spawnLocation = workspace:FindFirstChildOfClass("SpawnLocation")
+            if spawnLocation then
+                LP.Character.HumanoidRootPart.CFrame = spawnLocation.CFrame + Vector3.new(0, 3, 0)
+                Rayfield:Notify({
+                    Title = "Teleport Success",
+                    Content = "Teleported back to spawn!",
+                    Duration = 3,
+                    Image = 4483362458,
+                })
+            else
+                LP.Character.HumanoidRootPart.CFrame = CFrame.new(0, 50, 0)
+                Rayfield:Notify({
+                    Title = "Teleport Notice",
+                    Content = "No SpawnLocation found. Teleported to default coordinates.",
+                    Duration = 3,
+                    Image = 4483362458,
+                })
+            end
+        end
+    end,
+})
+
+Players.PlayerAdded:Connect(function()
+    PlayerDropdown:Refresh(getPlayerList(), true)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if player.Name == selectedPlayerName then
+        selectedPlayerName = nil
+    end
+    PlayerDropdown:Refresh(getPlayerList(), true)
+end)
+
+-- Waypoints Tab UI Controls
+local WaypointSection = WaypointTab:CreateSection("Custom Waypoints")
+
+WaypointTab:CreateInput({
+    Name = "Waypoint Name",
+    PlaceholderText = "Enter Name (e.g., Base, Shop)",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text)
+        waypointNameToSave = text
+    end
+})
+
+WaypointTab:CreateButton({
+    Name = "Save Current Position as Waypoint",
+    Callback = function()
+        if not waypointNameToSave or waypointNameToSave == "" then
+            Rayfield:Notify({
+                Title = "Waypoint Error",
+                Content = "Please type a name for your waypoint first.",
+                Duration = 3,
+                Image = 4483362458,
+            })
+            return
+        end
+
+        if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+            savedWaypoints[waypointNameToSave] = LP.Character.HumanoidRootPart.CFrame
+            WaypointDropdown:Refresh(getWaypointList(), true)
+            Rayfield:Notify({
+                Title = "Waypoint Saved",
+                Content = "Saved position as '" .. waypointNameToSave .. "'",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+WaypointDropdown = WaypointTab:CreateDropdown({
+    Name = "Select Saved Waypoint",
+    Options = getWaypointList(),
+    CurrentOption = "No Waypoints Saved",
+    MultipleOptions = false,
+    Flag = "SelectedWaypointDropdown",
+    Callback = function(Option)
+        if type(Option) == "table" then
+            selectedWaypointName = Option[1]
+        else
+            selectedWaypointName = Option
+        end
+    end,
+})
+
+WaypointTab:CreateButton({
+    Name = "Teleport to Selected Waypoint",
+    Callback = function()
+        if not selectedWaypointName or selectedWaypointName == "No Waypoints Saved" or not savedWaypoints[selectedWaypointName] then
+            Rayfield:Notify({
+                Title = "Teleport Error",
+                Content = "Please select a valid saved waypoint first.",
+                Duration = 3,
+                Image = 4483362458,
+            })
+            return
+        end
+
+        if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+            LP.Character.HumanoidRootPart.CFrame = savedWaypoints[selectedWaypointName]
+            Rayfield:Notify({
+                Title = "Teleport Success",
+                Content = "Teleported to waypoint: " .. selectedWaypointName,
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+WaypointTab:CreateButton({
+    Name = "Delete Selected Waypoint",
+    Callback = function()
+        if selectedWaypointName and savedWaypoints[selectedWaypointName] then
+            savedWaypoints[selectedWaypointName] = nil
+            WaypointDropdown:Refresh(getWaypointList(), true)
+            Rayfield:Notify({
+                Title = "Waypoint Deleted",
+                Content = "Removed waypoint.",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
 -- Keybind Manager Tab UI
 KeybindTab:CreateDropdown({
     Name = "Fly Key",
@@ -764,4 +984,4 @@ UIS.InputEnded:Connect(function(input, processed)
     end
 end)
 
-print("IzttNick Hub fully loaded and ready!")
+print("IzttNick Hub fully loaded with Waypoints, Teleport, and Features!")
