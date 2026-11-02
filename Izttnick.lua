@@ -1,8 +1,11 @@
--- IzttNick Hub | Optimized Script with Skill Check, Teleports, Waypoints, & Hub Features
+-- IzttNick Hub | Fully Loaded Optimized Script with Anti-AFK, CFrame Speed, Auto-Clicker, & Hub Features
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local LP = Players.LocalPlayer
@@ -37,11 +40,21 @@ local walkSpeedValue, jumpPowerValue = 16, 50
 local flySpeed, flying = 50, false
 local flyConnection, flyVelocity, flyGyro
 local noclipEnabled = false
+local clickTpEnabled = false
+local infiniteJumpEnabled = false
+local lowGravityEnabled = false
+local normalGravity = workspace.Gravity
 
--- ESP States
+-- CFrame Speed & Auto Clicker State
+local cframeSpeedEnabled = false
+local cframeSpeedValue = 1
+local autoClickerEnabled = false
+
+-- ESP & Visual States
 local espEnabled = false
 local skeletonEspEnabled = false
 local snaplineEspEnabled = false
+local rainbowCrosshair = false
 
 local highlights = {}
 local billboards = {}
@@ -58,6 +71,9 @@ local selectedPlayerName = nil
 local savedWaypoints = {}
 local waypointNameToSave = ""
 local selectedWaypointName = nil
+local followEnabled = false
+local followConnection = nil
+local spectateEnabled = false
 
 local function getPlayerList()
     local playerNames = {}
@@ -83,8 +99,16 @@ end
 -- Keybind Manager Config
 local keybinds = {
     Fly = Enum.KeyCode.T,
-    Noclip = Enum.KeyCode.N
+    Noclip = Enum.KeyCode.N,
+    ClickTP = Enum.KeyCode.Q
 }
+
+-- Anti-AFK Handler
+LP.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+    print("IzttNick Hub: Anti-AFK prevented kick.")
+end)
 
 -- Combat / Auto Aim State
 local autoAimEnabled = false
@@ -95,9 +119,6 @@ local showFOV = false
 local aimSmoothness = 0.2
 local teamCheck = true
 local wallCheck = false
-
--- Optimized Auto Generator Skill Check State
-local autoCheckEnabled = false
 
 -- Drawing FOV Circle
 local FOVCircle = Drawing.new("Circle")
@@ -127,31 +148,7 @@ LP.CharacterAdded:Connect(function(char)
     setupCharacter(char)
 end)
 
--- Lag-Free Optimized Skill Check Loop (Runs efficiently every 0.12 seconds)
-task.spawn(function()
-    local playerGui = LP:WaitForChild("PlayerGui")
-    while true do
-        task.wait(0.12)
-        if autoCheckEnabled then
-            pcall(function()
-                for _, gui in ipairs(playerGui:GetDescendants()) do
-                    if gui:IsA("TextButton") or gui:IsA("ImageButton") then
-                        local name = gui.Name:lower()
-                        if name:find("skillcheck") or name:find("check") or name:find("target") or name:find("circle") then
-                            if gui.Visible then
-                                VirtualInputManager:SendMouseButtonEvent(gui.AbsolutePosition.X + (gui.AbsoluteSize.X / 2), gui.AbsolutePosition.Y + (gui.AbsoluteSize.Y / 2), 0, true, game, 0)
-                                task.wait(0.02)
-                                VirtualInputManager:SendMouseButtonEvent(gui.AbsolutePosition.X + (gui.AbsoluteSize.X / 2), gui.AbsolutePosition.Y + (gui.AbsoluteSize.Y / 2), 0, false, game, 0)
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end
-end)
-
--- Robust Movement & Noclip Enforcement
+-- Movement, Noclip & CFrame Speed Enforcement
 RunService.Stepped:Connect(function()
     if noclipEnabled and character then
         for _, part in ipairs(character:GetDescendants()) do
@@ -162,7 +159,7 @@ RunService.Stepped:Connect(function()
     end
 end)
 
-RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function(dt)
     if humanoid and humanoid.Parent then
         humanoid.UseJumpPower = true
         if humanoid.WalkSpeed ~= walkSpeedValue then
@@ -170,6 +167,24 @@ RunService.Heartbeat:Connect(function()
         end
         if humanoid.JumpPower ~= jumpPowerValue then
             humanoid.JumpPower = jumpPowerValue
+        end
+    end
+
+    if cframeSpeedEnabled and root and humanoid and humanoid.MoveDirection.Magnitude > 0 then
+        root.CFrame = root.CFrame + (humanoid.MoveDirection * cframeSpeedValue * dt * 16)
+    end
+end)
+
+-- Auto Clicker Loop
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if autoClickerEnabled then
+            pcall(function()
+                VirtualInputManager:SendMouseButtonEvent(Mouse.X, Mouse.Y, 0, true, game, 0)
+                task.wait(0.02)
+                VirtualInputManager:SendMouseButtonEvent(Mouse.X, Mouse.Y, 0, false, game, 0)
+            end)
         end
     end
 end)
@@ -206,11 +221,69 @@ Main:CreateToggle({
 })
 
 Main:CreateToggle({
-    Name = "Auto Generator Skill Check (Low Lag)",
+    Name = "Infinite Jump",
     CurrentValue = false,
     Callback = function(value)
-        autoCheckEnabled = value
+        infiniteJumpEnabled = value
     end
+})
+
+Main:CreateToggle({
+    Name = "Low Gravity",
+    CurrentValue = false,
+    Callback = function(value)
+        lowGravityEnabled = value
+        workspace.Gravity = value and 50 or normalGravity
+    end
+})
+
+Main:CreateToggle({
+    Name = "CFrame Speed (Bypass Limit)",
+    CurrentValue = false,
+    Callback = function(value)
+        cframeSpeedEnabled = value
+    end
+})
+
+Main:CreateSlider({
+    Name = "CFrame Speed Multiplier",
+    Range = {1, 5},
+    Increment = 0.5,
+    CurrentValue = 1,
+    Callback = function(value)
+        cframeSpeedValue = value
+    end
+})
+
+Main:CreateToggle({
+    Name = "Auto Clicker",
+    CurrentValue = false,
+    Callback = function(value)
+        autoClickerEnabled = value
+    end
+})
+
+Main:CreateSlider({
+    Name = "Camera FOV",
+    Range = {70, 120},
+    Increment = 1,
+    CurrentValue = 70,
+    Callback = function(value)
+        Camera.FieldOfView = value
+    end
+})
+
+Main:CreateButton({
+    Name = "Unlock Max Camera Zoom",
+    Callback = function()
+        LP.CameraMaxZoomDistance = 10000
+        Rayfield:Notify({
+            Title = "Zoom Unlocked",
+            Content = "You can now zoom out infinitely!",
+            Duration = 3,
+            Image = 4483362458,
+        })
+    end,
 })
 
 -- Fly System
@@ -635,6 +708,16 @@ Visuals:CreateColorPicker({
     end
 })
 
+Visuals:CreateSlider({
+    Name = "Custom Clock Time",
+    Range = {0, 24},
+    Increment = 1,
+    CurrentValue = 14,
+    Callback = function(value)
+        Lighting.ClockTime = value
+    end
+})
+
 Players.PlayerRemoving:Connect(clearESP)
 
 RunService.RenderStepped:Connect(function()
@@ -753,6 +836,21 @@ Cross:CreateDropdown({
     end
 })
 
+Cross:CreateToggle({
+    Name = "Rainbow Crosshair",
+    CurrentValue = false,
+    Callback = function(value)
+        rainbowCrosshair = value
+    end
+})
+
+RunService.RenderStepped:Connect(function()
+    if rainbowCrosshair and CrossLabel then
+        local hue = (tick() * 2) % 1
+        CrossLabel.TextColor3 = Color3.fromHSV(hue, 1, 1)
+    end
+end)
+
 -- Teleport Tab UI Controls
 local TeleportSection = TeleportTab:CreateSection("Player Teleport")
 
@@ -813,6 +911,52 @@ TeleportTab:CreateButton({
     end,
 })
 
+TeleportTab:CreateToggle({
+    Name = "Loop Attach to Selected Player",
+    CurrentValue = false,
+    Callback = function(value)
+        followEnabled = value
+        if followConnection then followConnection:Disconnect() followConnection = nil end
+        
+        if followEnabled then
+            followConnection = RunService.RenderStepped:Connect(function()
+                if selectedPlayerName then
+                    local targetPlayer = Players:FindFirstChild(selectedPlayerName)
+                    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and root then
+                        root.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 4)
+                    end
+                end
+            end)
+        end
+    end
+})
+
+TeleportTab:CreateToggle({
+    Name = "Spectate Selected Player",
+    CurrentValue = false,
+    Callback = function(value)
+        spectateEnabled = value
+        if spectateEnabled and selectedPlayerName then
+            local targetPlayer = Players:FindFirstChild(selectedPlayerName)
+            if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+                Camera.CameraSubject = targetPlayer.Character.Humanoid
+            end
+        else
+            if humanoid then
+                Camera.CameraSubject = humanoid
+            end
+        end
+    end
+})
+
+TeleportTab:CreateToggle({
+    Name = "Enable Click-to-Teleport",
+    CurrentValue = false,
+    Callback = function(value)
+        clickTpEnabled = value
+    end
+})
+
 TeleportTab:CreateButton({
     Name = "Teleport Back to Spawn",
     Callback = function()
@@ -836,6 +980,54 @@ TeleportTab:CreateButton({
                 })
             end
         end
+    end,
+})
+
+-- Server Utilities Section
+local ServerSection = TeleportTab:CreateSection("Server Utilities")
+
+TeleportTab:CreateButton({
+    Name = "Rejoin Server",
+    Callback = function()
+        Rayfield:Notify({
+            Title = "Server Utility",
+            Content = "Rejoining current server...",
+            Duration = 3,
+            Image = 4483362458,
+        })
+        TeleportService:Teleport(game.PlaceId, LP)
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Server Hop",
+    Callback = function()
+        Rayfield:Notify({
+            Title = "Server Utility",
+            Content = "Searching for a new server...",
+            Duration = 3,
+            Image = 4483362458,
+        })
+        
+        local success, servers = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/0?sortOrder=Asc&limit=100"))
+        end)
+        
+        if success and servers and servers.data then
+            for _, s in ipairs(servers.data) do
+                if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LP)
+                    return
+                end
+            end
+        end
+        
+        Rayfield:Notify({
+            Title = "Server Hop Failed",
+            Content = "Could not find an available server.",
+            Duration = 3,
+            Image = 4483362458,
+        })
     end,
 })
 
@@ -965,7 +1157,17 @@ KeybindTab:CreateDropdown({
     end
 })
 
--- Global Keybind Input Handler
+KeybindTab:CreateDropdown({
+    Name = "Click TP Key",
+    Options = {"Q", "E", "Z", "X", "F"},
+    CurrentOption = "Q",
+    Callback = function(value)
+        value = typeof(value) == "table" and value[1] or value
+        keybinds.ClickTP = Enum.KeyCode[value]
+    end
+})
+
+-- Global Keybind & Action Input Handler
 UIS.InputBegan:Connect(function(input, processed)
     if processed then return end
 
@@ -973,6 +1175,14 @@ UIS.InputBegan:Connect(function(input, processed)
         setFly(not flying)
     elseif input.KeyCode == keybinds.Noclip then
         noclipEnabled = not noclipEnabled
+    elseif input.KeyCode == keybinds.ClickTP and clickTpEnabled then
+        if root and Mouse.Hit then
+            root.CFrame = Mouse.Hit + Vector3.new(0, 3, 0)
+        end
+    elseif input.KeyCode == Enum.KeyCode.Space and infiniteJumpEnabled then
+        if humanoid and humanoid:GetState() ~= Enum.HumanoidStateType.Dead then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
     elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
         aimbotHold = true
     end
@@ -984,4 +1194,4 @@ UIS.InputEnded:Connect(function(input, processed)
     end
 end)
 
-print("IzttNick Hub fully loaded with Waypoints, Teleport, and Features!")
+print("IzttNick Hub fully loaded with all features, Anti-AFK, Server Hop, Waypoints & Keybinds!")
