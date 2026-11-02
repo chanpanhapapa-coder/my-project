@@ -1,4 +1,4 @@
--- IzttNick Hub | Optimized Script (Cleaned Version)
+-- IzttNick Hub | Cleaned & Optimized Script with New Features
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -6,7 +6,8 @@ local Lighting = game:GetService("Lighting")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local VirtualUser = game:GetService("VirtualUser")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local Stats = game:GetService("Stats")
+local GuiService = game:GetService("GuiService")
 
 local LP = Players.LocalPlayer
 local Mouse = LP:GetMouse()
@@ -22,7 +23,8 @@ local Window = Rayfield:CreateWindow({
     LoadingTitle = "IzttNick Hub",
     LoadingSubtitle = "Made by IzttNick",
     ConfigurationSaving = {Enabled = false},
-    KeySystem = false
+    KeySystem = false,
+    Theme = "Default"
 })
 
 local Main = Window:CreateTab("Main", 4483362458)
@@ -33,6 +35,7 @@ local Cross = Window:CreateTab("Crosshair", 4483362458)
 local TeleportTab = Window:CreateTab("Teleport", 4483362458)
 local WaypointTab = Window:CreateTab("Waypoints", 4483362458)
 local KeybindTab = Window:CreateTab("Keybinds", 4483362458)
+local SettingsTab = Window:CreateTab("UI Settings", 4483362458)
 
 -- State Variables
 local character, humanoid, root
@@ -43,13 +46,9 @@ local noclipEnabled = false
 local lowGravityEnabled = false
 local normalGravity = workspace.Gravity
 
--- Feature States
-local invisibleEnabled = false
-
--- CFrame Speed & Auto Clicker State
+-- CFrame Speed State
 local cframeSpeedEnabled = false
 local cframeSpeedValue = 1
-local autoClickerEnabled = false
 
 -- Hitbox Expander State
 local hitboxExpanderEnabled = false
@@ -59,6 +58,8 @@ local hitboxSize = 5
 local espEnabled = false
 local snaplineEspEnabled = false
 local rainbowCrosshair = false
+local xrayEnabled = false
+local touchImmunityEnabled = false
 
 local highlights = {}
 local billboards = {}
@@ -76,6 +77,7 @@ local selectedWaypointName = nil
 local followEnabled = false
 local followConnection = nil
 local spectateEnabled = false
+local autoRejoinEnabled = false
 
 local function getPlayerList()
     local playerNames = {}
@@ -109,6 +111,14 @@ LP.Idled:Connect(function()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new())
     print("IzttNick Hub: Anti-AFK prevented kick.")
+end)
+
+-- Auto Rejoin on Kick / Disconnect
+GuiService.ErrorMessageChanged:Connect(function()
+    if autoRejoinEnabled then
+        task.wait(2)
+        TeleportService:Teleport(game.PlaceId, LP)
+    end
 end)
 
 -- Combat / Auto Aim State
@@ -158,6 +168,14 @@ RunService.Stepped:Connect(function()
             end
         end
     end
+
+    if touchImmunityEnabled and character then
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanTouch = false
+            end
+        end
+    end
 end)
 
 RunService.Heartbeat:Connect(function(dt)
@@ -185,20 +203,6 @@ RunService.Heartbeat:Connect(function(dt)
                     rootPart.CanCollide = false
                 end
             end
-        end
-    end
-end)
-
--- Auto Clicker Loop
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if autoClickerEnabled then
-            pcall(function()
-                VirtualInputManager:SendMouseButtonEvent(Mouse.X, Mouse.Y, 0, true, game, 0)
-                task.wait(0.02)
-                VirtualInputManager:SendMouseButtonEvent(Mouse.X, Mouse.Y, 0, false, game, 0)
-            end)
         end
     end
 end)
@@ -235,23 +239,6 @@ Main:CreateToggle({
 })
 
 Main:CreateToggle({
-    Name = "Toggle Invisibility",
-    CurrentValue = false,
-    Callback = function(value)
-        invisibleEnabled = value
-        if character then
-            for _, part in ipairs(character:GetDescendants()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                    part.Transparency = invisibleEnabled and 1 or 0
-                elseif part:IsA("Decal") then
-                    part.Transparency = invisibleEnabled and 1 or 0
-                end
-            end
-        end
-    end
-})
-
-Main:CreateToggle({
     Name = "Low Gravity",
     CurrentValue = false,
     Callback = function(value)
@@ -275,14 +262,6 @@ Main:CreateSlider({
     CurrentValue = 1,
     Callback = function(value)
         cframeSpeedValue = value
-    end
-})
-
-Main:CreateToggle({
-    Name = "Auto Clicker",
-    CurrentValue = false,
-    Callback = function(value)
-        autoClickerEnabled = value
     end
 })
 
@@ -667,6 +646,34 @@ Visuals:CreateColorPicker({
 })
 
 Visuals:CreateToggle({
+    Name = "X-Ray Mode (Walls Transparency)",
+    CurrentValue = false,
+    Callback = function(value)
+        xrayEnabled = value
+        for _, object in ipairs(workspace:GetDescendants()) do
+            if object:IsA("BasePart") and not object:IsDescendantOf(LP.Character) and not object.Parent:FindFirstChildOfClass("Humanoid") then
+                object.LocalTransparencyModifier = xrayEnabled and 0.6 or 0
+            end
+        end
+    end
+})
+
+Visuals:CreateToggle({
+    Name = "Hazard Immunity (Disable Touch Triggers)",
+    CurrentValue = false,
+    Callback = function(value)
+        touchImmunityEnabled = value
+        if not touchImmunityEnabled and character then
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanTouch = true
+                end
+            end
+        end
+    end
+})
+
+Visuals:CreateToggle({
     Name = "Remove Fog",
     CurrentValue = false,
     Callback = function(value)
@@ -706,6 +713,7 @@ local originalLighting = {
 
 local fpsBoostEnabled = false
 local autoBrightEnabled = false
+local showPerformanceOverlay = false
 
 local function applyLighting()
     if fpsBoostEnabled then
@@ -742,6 +750,52 @@ Perf:CreateToggle({
         applyLighting()
     end
 })
+
+-- Performance Overlay (FPS & Ping)
+local StatsGui = Instance.new("ScreenGui")
+StatsGui.Name = "IzttNickStats"
+StatsGui.ResetOnSpawn = false
+StatsGui.Parent = LP:WaitForChild("PlayerGui")
+
+local StatsLabel = Instance.new("TextLabel")
+StatsLabel.Name = "StatsLabel"
+StatsLabel.Size = UDim2.fromOffset(180, 25)
+StatsLabel.Position = UDim2.fromScale(0.01, 0.01)
+StatsLabel.BackgroundTransparency = 0.5
+StatsLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+StatsLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+StatsLabel.TextScaled = true
+StatsLabel.Font = Enum.Font.Code
+StatsLabel.Text = "FPS: -- | Ping: --ms"
+StatsLabel.Visible = false
+StatsLabel.Parent = StatsGui
+
+Perf:CreateToggle({
+    Name = "Show FPS & Ping Overlay",
+    CurrentValue = false,
+    Callback = function(value)
+        showPerformanceOverlay = value
+        StatsLabel.Visible = value
+    end
+})
+
+local frameCount = 0
+local lastCheck = tick()
+
+RunService.RenderStepped:Connect(function()
+    frameCount += 1
+    local now = tick()
+    if now - lastCheck >= 1 then
+        local fps = math.floor(frameCount / (now - lastCheck))
+        frameCount = 0
+        lastCheck = now
+        
+        local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+        if showPerformanceOverlay then
+            StatsLabel.Text = string.format("FPS: %d | Ping: %dms", fps, ping)
+        end
+    end
+end)
 
 -- Crosshair Tab
 local GUI = Instance.new("ScreenGui")
@@ -881,41 +935,6 @@ TeleportTab:CreateButton({
     end,
 })
 
-TeleportTab:CreateButton({
-    Name = "Bring Selected Player to Me",
-    Callback = function()
-        if not selectedPlayerName or selectedPlayerName == "" then
-            Rayfield:Notify({
-                Title = "Teleport Error",
-                Content = "Please select a player from the dropdown first.",
-                Duration = 3,
-                Image = 4483362458,
-            })
-            return
-        end
-
-        local targetPlayer = Players:FindFirstChild(selectedPlayerName)
-        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-                targetPlayer.Character.HumanoidRootPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-                Rayfield:Notify({
-                    Title = "Teleport Success",
-                    Content = "Brought " .. selectedPlayerName .. " to you!",
-                    Duration = 3,
-                    Image = 4483362458,
-                })
-            end
-        else
-            Rayfield:Notify({
-                Title = "Teleport Error",
-                Content = "Target player is not in game or missing character.",
-                Duration = 3,
-                Image = 4483362458,
-            })
-        end
-    end,
-})
-
 TeleportTab:CreateToggle({
     Name = "Loop Attach to Selected Player",
     CurrentValue = false,
@@ -956,6 +975,14 @@ TeleportTab:CreateToggle({
 
 -- Server Utilities Section
 local ServerSection = TeleportTab:CreateSection("Server Utilities")
+
+TeleportTab:CreateToggle({
+    Name = "Auto Rejoin on Kick / Disconnect",
+    CurrentValue = false,
+    Callback = function(value)
+        autoRejoinEnabled = value
+    end
+})
 
 TeleportTab:CreateButton({
     Name = "Rejoin Server",
@@ -1126,6 +1153,23 @@ KeybindTab:CreateDropdown({
     Callback = function(value)
         value = typeof(value) == "table" and value[1] or value
         keybinds.Noclip = Enum.KeyCode[value]
+    end
+})
+
+-- UI Settings / Theme Switcher Tab
+SettingsTab:CreateDropdown({
+    Name = "Select UI Theme",
+    Options = {"Default", "Ocean", "Amber", "Green", "DarkBlue", "Light", "Blox"},
+    CurrentOption = "Default",
+    Callback = function(value)
+        local selectedTheme = typeof(value) == "table" and value[1] or value
+        Window:SetTheme(selectedTheme)
+        Rayfield:Notify({
+            Title = "Theme Changed",
+            Content = "UI theme updated to " .. selectedTheme,
+            Duration = 3,
+            Image = 4483362458,
+        })
     end
 })
 
