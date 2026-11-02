@@ -1,4 +1,4 @@
--- IzttNick Hub | Fully Loaded Script with Invisibility, Auto Tool Use, & Hub Features
+-- IzttNick Hub | Optimized Script (Cleaned Version)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -40,14 +40,11 @@ local walkSpeedValue, jumpPowerValue = 16, 50
 local flySpeed, flying = 50, false
 local flyConnection, flyVelocity, flyGyro
 local noclipEnabled = false
-local clickTpEnabled = false
-local infiniteJumpEnabled = false
 local lowGravityEnabled = false
 local normalGravity = workspace.Gravity
 
--- New Feature States
+-- Feature States
 local invisibleEnabled = false
-local autoToolEnabled = false
 
 -- CFrame Speed & Auto Clicker State
 local cframeSpeedEnabled = false
@@ -60,18 +57,15 @@ local hitboxSize = 5
 
 -- ESP & Visual States
 local espEnabled = false
-local skeletonEspEnabled = false
 local snaplineEspEnabled = false
 local rainbowCrosshair = false
 
 local highlights = {}
 local billboards = {}
-local skeletonLines = {}
 local snaplineObjects = {}
 
 -- Custom Colors State
 local espColor = Color3.fromRGB(255, 40, 40)
-local skeletonColor = Color3.fromRGB(0, 255, 255)
 local snaplineColor = Color3.fromRGB(255, 255, 255)
 
 -- Teleport & Waypoint State Storage
@@ -107,8 +101,7 @@ end
 -- Keybind Manager Config
 local keybinds = {
     Fly = Enum.KeyCode.T,
-    Noclip = Enum.KeyCode.N,
-    ClickTP = Enum.KeyCode.Q
+    Noclip = Enum.KeyCode.N
 }
 
 -- Anti-AFK Handler
@@ -210,21 +203,6 @@ task.spawn(function()
     end
 end)
 
--- Auto Tool Use Loop
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if autoToolEnabled and character then
-            pcall(function()
-                local tool = character:FindFirstChildOfClass("Tool")
-                if tool then
-                    tool:Activate()
-                end
-            end)
-        end
-    end
-end)
-
 -- Main Tab UI Controls
 Main:CreateInput({
     Name = "Walk Speed (1-300)",
@@ -257,14 +235,6 @@ Main:CreateToggle({
 })
 
 Main:CreateToggle({
-    Name = "Infinite Jump",
-    CurrentValue = false,
-    Callback = function(value)
-        infiniteJumpEnabled = value
-    end
-})
-
-Main:CreateToggle({
     Name = "Toggle Invisibility",
     CurrentValue = false,
     Callback = function(value)
@@ -278,14 +248,6 @@ Main:CreateToggle({
                 end
             end
         end
-    end
-})
-
-Main:CreateToggle({
-    Name = "Auto Tool Use",
-    CurrentValue = false,
-    Callback = function(value)
-        autoToolEnabled = value
     end
 })
 
@@ -563,38 +525,15 @@ local function clearESP(player)
         billboards[player]:Destroy()
         billboards[player] = nil
     end
-    if skeletonLines[player] then
-        for _, line in pairs(skeletonLines[player]) do
-            line:Remove()
-        end
-        skeletonLines[player] = nil
-    end
     if snaplineObjects[player] then
         snaplineObjects[player]:Remove()
         snaplineObjects[player] = nil
     end
 end
 
-local bonePairs = {
-    {"Head", "UpperTorso"},
-    {"UpperTorso", "LowerTorso"},
-    {"UpperTorso", "LeftUpperArm"},
-    {"LeftUpperArm", "LeftLowerArm"},
-    {"LeftLowerArm", "LeftHand"},
-    {"UpperTorso", "RightUpperArm"},
-    {"RightUpperArm", "RightLowerArm"},
-    {"RightLowerArm", "RightHand"},
-    {"LowerTorso", "LeftUpperLeg"},
-    {"LeftUpperLeg", "LeftLowerLeg"},
-    {"LeftLowerLeg", "LeftFoot"},
-    {"LowerTorso", "RightUpperLeg"},
-    {"RightUpperLeg", "RightLowerLeg"},
-    {"RightLowerLeg", "RightFoot"}
-}
-
 local function updateESP()
     for _, player in ipairs(Players:GetPlayers()) do
-        if player == LP or (not espEnabled and not skeletonEspEnabled and not snaplineEspEnabled) then
+        if player == LP or (not espEnabled and not snaplineEspEnabled) then
             clearESP(player)
             continue
         end
@@ -657,49 +596,6 @@ local function updateESP()
             if billboards[player] then billboards[player]:Destroy() billboards[player] = nil end
         end
 
-        -- Handle Skeleton Tracers
-        if skeletonEspEnabled then
-            if not skeletonLines[player] then
-                skeletonLines[player] = {}
-                for i = 1, #bonePairs do
-                    local l = Drawing.new("Line")
-                    l.Thickness = 1.5
-                    l.Visible = false
-                    skeletonLines[player][i] = l
-                end
-            end
-
-            local lines = skeletonLines[player]
-            for i, pair in ipairs(bonePairs) do
-                local line = lines[i]
-                local partA = char:FindFirstChild(pair[1])
-                local partB = char:FindFirstChild(pair[2])
-
-                if partA and partB then
-                    local posA, visA = Camera:WorldToViewportPoint(partA.Position)
-                    local posB, visB = Camera:WorldToViewportPoint(partB.Position)
-
-                    if visA or visB then
-                        line.From = Vector2.new(posA.X, posA.Y)
-                        line.To = Vector2.new(posB.X, posB.Y)
-                        line.Color = skeletonColor
-                        line.Visible = true
-                    else
-                        line.Visible = false
-                    end
-                else
-                    line.Visible = false
-                end
-            end
-        else
-            if skeletonLines[player] then
-                for _, line in pairs(skeletonLines[player]) do
-                    line:Remove()
-                end
-                skeletonLines[player] = nil
-            end
-        end
-
         -- Handle Snaplines
         if snaplineEspEnabled then
             local rootPart = char:FindFirstChild("HumanoidRootPart")
@@ -754,23 +650,6 @@ Visuals:CreateColorPicker({
 })
 
 Visuals:CreateToggle({
-    Name = "Skeleton Tracing ESP",
-    CurrentValue = false,
-    Callback = function(value)
-        skeletonEspEnabled = value
-    end
-})
-
-Visuals:CreateColorPicker({
-    Name = "Skeleton Color",
-    Color = Color3.fromRGB(0, 255, 255),
-    Flag = "SkeletonColorFlag",
-    Callback = function(value)
-        skeletonColor = value
-    end
-})
-
-Visuals:CreateToggle({
     Name = "Snaplines ESP",
     CurrentValue = false,
     Callback = function(value)
@@ -812,7 +691,7 @@ Visuals:CreateSlider({
 Players.PlayerRemoving:Connect(clearESP)
 
 RunService.RenderStepped:Connect(function()
-    if espEnabled or skeletonEspEnabled or snaplineEspEnabled then
+    if espEnabled or snaplineEspEnabled then
         updateESP()
     end
 end)
@@ -1075,40 +954,6 @@ TeleportTab:CreateToggle({
     end
 })
 
-TeleportTab:CreateToggle({
-    Name = "Enable Click-to-Teleport",
-    CurrentValue = false,
-    Callback = function(value)
-        clickTpEnabled = value
-    end
-})
-
-TeleportTab:CreateButton({
-    Name = "Teleport Back to Spawn",
-    Callback = function()
-        if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-            local spawnLocation = workspace:FindFirstChildOfClass("SpawnLocation")
-            if spawnLocation then
-                LP.Character.HumanoidRootPart.CFrame = spawnLocation.CFrame + Vector3.new(0, 3, 0)
-                Rayfield:Notify({
-                    Title = "Teleport Success",
-                    Content = "Teleported back to spawn!",
-                    Duration = 3,
-                    Image = 4483362458,
-                })
-            else
-                LP.Character.HumanoidRootPart.CFrame = CFrame.new(0, 50, 0)
-                Rayfield:Notify({
-                    Title = "Teleport Notice",
-                    Content = "No SpawnLocation found. Teleported to default coordinates.",
-                    Duration = 3,
-                    Image = 4483362458,
-                })
-            end
-        end
-    end,
-})
-
 -- Server Utilities Section
 local ServerSection = TeleportTab:CreateSection("Server Utilities")
 
@@ -1161,6 +1006,7 @@ Players.PlayerAdded:Connect(function()
     PlayerDropdown:Refresh(getPlayerList(), true)
 end)
 
+Players.PlayerRemoving:Connect(clearESP)
 Players.PlayerRemoving:Connect(function(player)
     if player.Name == selectedPlayerName then
         selectedPlayerName = nil
@@ -1283,16 +1129,6 @@ KeybindTab:CreateDropdown({
     end
 })
 
-KeybindTab:CreateDropdown({
-    Name = "Click TP Key",
-    Options = {"Q", "E", "Z", "X", "F"},
-    CurrentOption = "Q",
-    Callback = function(value)
-        value = typeof(value) == "table" and value[1] or value
-        keybinds.ClickTP = Enum.KeyCode[value]
-    end
-})
-
 -- Global Keybind & Action Input Handler
 UIS.InputBegan:Connect(function(input, processed)
     if processed then return end
@@ -1301,14 +1137,6 @@ UIS.InputBegan:Connect(function(input, processed)
         setFly(not flying)
     elseif input.KeyCode == keybinds.Noclip then
         noclipEnabled = not noclipEnabled
-    elseif input.KeyCode == keybinds.ClickTP and clickTpEnabled then
-        if root and Mouse.Hit then
-            root.CFrame = Mouse.Hit + Vector3.new(0, 3, 0)
-        end
-    elseif input.KeyCode == Enum.KeyCode.Space and infiniteJumpEnabled then
-        if humanoid and humanoid:GetState() ~= Enum.HumanoidStateType.Dead then
-            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
     elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
         aimbotHold = true
     end
@@ -1320,4 +1148,4 @@ UIS.InputEnded:Connect(function(input, processed)
     end
 end)
 
-print("IzttNick Hub fully loaded with Invisibility, Auto Tool Use, & Features!")
+print("IzttNick Hub script loaded successfully.")
