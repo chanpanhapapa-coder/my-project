@@ -1,4 +1,4 @@
--- IzttNick Hub | Fully Loaded Optimized Script with Anti-AFK, CFrame Speed, Auto-Clicker, & Hub Features
+-- IzttNick Hub | Fully Loaded Script with Invisibility, Auto Tool Use, & Hub Features
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -45,10 +45,18 @@ local infiniteJumpEnabled = false
 local lowGravityEnabled = false
 local normalGravity = workspace.Gravity
 
+-- New Feature States
+local invisibleEnabled = false
+local autoToolEnabled = false
+
 -- CFrame Speed & Auto Clicker State
 local cframeSpeedEnabled = false
 local cframeSpeedValue = 1
 local autoClickerEnabled = false
+
+-- Hitbox Expander State
+local hitboxExpanderEnabled = false
+local hitboxSize = 5
 
 -- ESP & Visual States
 local espEnabled = false
@@ -148,7 +156,7 @@ LP.CharacterAdded:Connect(function(char)
     setupCharacter(char)
 end)
 
--- Movement, Noclip & CFrame Speed Enforcement
+-- Movement, Noclip, Hitbox & CFrame Speed Enforcement
 RunService.Stepped:Connect(function()
     if noclipEnabled and character then
         for _, part in ipairs(character:GetDescendants()) do
@@ -173,6 +181,19 @@ RunService.Heartbeat:Connect(function(dt)
     if cframeSpeedEnabled and root and humanoid and humanoid.MoveDirection.Magnitude > 0 then
         root.CFrame = root.CFrame + (humanoid.MoveDirection * cframeSpeedValue * dt * 16)
     end
+
+    if hitboxExpanderEnabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LP and player.Character then
+                local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+                if rootPart then
+                    rootPart.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                    rootPart.Transparency = 0.7
+                    rootPart.CanCollide = false
+                end
+            end
+        end
+    end
 end)
 
 -- Auto Clicker Loop
@@ -189,7 +210,22 @@ task.spawn(function()
     end
 end)
 
--- Main Tab UI
+-- Auto Tool Use Loop
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if autoToolEnabled and character then
+            pcall(function()
+                local tool = character:FindFirstChildOfClass("Tool")
+                if tool then
+                    tool:Activate()
+                end
+            end)
+        end
+    end
+end)
+
+-- Main Tab UI Controls
 Main:CreateInput({
     Name = "Walk Speed (1-300)",
     PlaceholderText = "16",
@@ -225,6 +261,31 @@ Main:CreateToggle({
     CurrentValue = false,
     Callback = function(value)
         infiniteJumpEnabled = value
+    end
+})
+
+Main:CreateToggle({
+    Name = "Toggle Invisibility",
+    CurrentValue = false,
+    Callback = function(value)
+        invisibleEnabled = value
+        if character then
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.Transparency = invisibleEnabled and 1 or 0
+                elseif part:IsA("Decal") then
+                    part.Transparency = invisibleEnabled and 1 or 0
+                end
+            end
+        end
+    end
+})
+
+Main:CreateToggle({
+    Name = "Auto Tool Use",
+    CurrentValue = false,
+    Callback = function(value)
+        autoToolEnabled = value
     end
 })
 
@@ -437,6 +498,24 @@ Combat:CreateSlider({
     CurrentValue = 0.2,
     Callback = function(value)
         aimSmoothness = value
+    end
+})
+
+Combat:CreateToggle({
+    Name = "Hitbox Expander",
+    CurrentValue = false,
+    Callback = function(value)
+        hitboxExpanderEnabled = value
+    end
+})
+
+Combat:CreateSlider({
+    Name = "Hitbox Size",
+    Range = {2, 20},
+    Increment = 1,
+    CurrentValue = 5,
+    Callback = function(value)
+        hitboxSize = value
     end
 })
 
@@ -708,6 +787,18 @@ Visuals:CreateColorPicker({
     end
 })
 
+Visuals:CreateToggle({
+    Name = "Remove Fog",
+    CurrentValue = false,
+    Callback = function(value)
+        if value then
+            Lighting.FogEnd = 999999
+        else
+            Lighting.FogEnd = 1000
+        end
+    end
+})
+
 Visuals:CreateSlider({
     Name = "Custom Clock Time",
     Range = {0, 24},
@@ -896,6 +987,41 @@ TeleportTab:CreateButton({
                 Rayfield:Notify({
                     Title = "Teleport Success",
                     Content = "Teleported to " .. selectedPlayerName,
+                    Duration = 3,
+                    Image = 4483362458,
+                })
+            end
+        else
+            Rayfield:Notify({
+                Title = "Teleport Error",
+                Content = "Target player is not in game or missing character.",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Bring Selected Player to Me",
+    Callback = function()
+        if not selectedPlayerName or selectedPlayerName == "" then
+            Rayfield:Notify({
+                Title = "Teleport Error",
+                Content = "Please select a player from the dropdown first.",
+                Duration = 3,
+                Image = 4483362458,
+            })
+            return
+        end
+
+        local targetPlayer = Players:FindFirstChild(selectedPlayerName)
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                targetPlayer.Character.HumanoidRootPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                Rayfield:Notify({
+                    Title = "Teleport Success",
+                    Content = "Brought " .. selectedPlayerName .. " to you!",
                     Duration = 3,
                     Image = 4483362458,
                 })
@@ -1194,4 +1320,4 @@ UIS.InputEnded:Connect(function(input, processed)
     end
 end)
 
-print("IzttNick Hub fully loaded with all features, Anti-AFK, Server Hop, Waypoints & Keybinds!")
+print("IzttNick Hub fully loaded with Invisibility, Auto Tool Use, & Features!")
