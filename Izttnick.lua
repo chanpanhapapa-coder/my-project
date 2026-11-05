@@ -1,1195 +1,1024 @@
--- IzttNick Hub | Cleaned & Optimized Script with New Features
+
+--==================================================
+-- IzttNick Hub V2.2
+-- Roblox Studio Edition
+-- Movement + Visuals + Utilities + Crosshair
+--==================================================
+
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
-local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
-local VirtualUser = game:GetService("VirtualUser")
-local Stats = game:GetService("Stats")
-local GuiService = game:GetService("GuiService")
 
 local LP = Players.LocalPlayer
-local Mouse = LP:GetMouse()
-local Camera = workspace.CurrentCamera
+local PlayerGui = LP:WaitForChild("PlayerGui")
 
--- Rayfield UI
-local Rayfield = loadstring(game:HttpGet(
-    "https://sirius.menu/rayfield"
-))()
+--==================================================
+-- SETTINGS
+--==================================================
 
-local Window = Rayfield:CreateWindow({
-    Name = "IzttNick Hub",
-    LoadingTitle = "IzttNick Hub",
-    LoadingSubtitle = "Made by IzttNick",
-    ConfigurationSaving = {Enabled = false},
-    KeySystem = false,
-    Theme = "Default"
-})
-
-local Main = Window:CreateTab("Main", 4483362458)
-local Combat = Window:CreateTab("Combat", 4483362458)
-local Visuals = Window:CreateTab("Visuals", 4483362458)
-local Perf = Window:CreateTab("Performance", 4483362458)
-local Cross = Window:CreateTab("Crosshair", 4483362458)
-local TeleportTab = Window:CreateTab("Teleport", 4483362458)
-local WaypointTab = Window:CreateTab("Waypoints", 4483362458)
-local KeybindTab = Window:CreateTab("Keybinds", 4483362458)
-local SettingsTab = Window:CreateTab("UI Settings", 4483362458)
-
--- State Variables
-local character, humanoid, root
-local walkSpeedValue, jumpPowerValue = 16, 50
-local flySpeed, flying = 50, false
-local flyConnection, flyVelocity, flyGyro
-local noclipEnabled = false
-local lowGravityEnabled = false
-local normalGravity = workspace.Gravity
-
--- CFrame Speed State
-local cframeSpeedEnabled = false
-local cframeSpeedValue = 1
-
--- Hitbox Expander State
-local hitboxExpanderEnabled = false
-local hitboxSize = 5
-
--- ESP & Visual States
-local espEnabled = false
-local snaplineEspEnabled = false
-local rainbowCrosshair = false
-local xrayEnabled = false
-local touchImmunityEnabled = false
-
-local highlights = {}
-local billboards = {}
-local snaplineObjects = {}
-
--- Custom Colors State
-local espColor = Color3.fromRGB(255, 40, 40)
-local snaplineColor = Color3.fromRGB(255, 255, 255)
-
--- Teleport & Waypoint State Storage
-local selectedPlayerName = nil
-local savedWaypoints = {}
-local waypointNameToSave = ""
-local selectedWaypointName = nil
-local followEnabled = false
-local followConnection = nil
-local spectateEnabled = false
-local autoRejoinEnabled = false
-
-local function getPlayerList()
-    local playerNames = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LP then
-            table.insert(playerNames, player.Name)
-        end
-    end
-    return playerNames
-end
-
-local function getWaypointList()
-    local names = {}
-    for name, _ in pairs(savedWaypoints) do
-        table.insert(names, name)
-    end
-    if #names == 0 then
-        table.insert(names, "No Waypoints Saved")
-    end
-    return names
-end
-
--- Keybind Manager Config
-local keybinds = {
-    Fly = Enum.KeyCode.T,
-    Noclip = Enum.KeyCode.N
+local Defaults = {
+    WalkSpeed = 16,
+    JumpPower = 50,
+    SprintSpeed = 28,
+    FlySpeed = 50,
+    DashPower = 65,
+    BlinkDistance = 25,
+    MaxESPDistance = 250,
+    FOV = 70,
+    Gravity = workspace.Gravity,
 }
 
--- Anti-AFK Handler
-LP.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-    print("IzttNick Hub: Anti-AFK prevented kick.")
-end)
+local Settings = {
+    WalkSpeed = Defaults.WalkSpeed,
+    JumpPower = Defaults.JumpPower,
+    SprintSpeed = Defaults.SprintSpeed,
+    FlySpeed = Defaults.FlySpeed,
+    DashPower = Defaults.DashPower,
+    BlinkDistance = Defaults.BlinkDistance,
+    MaxESPDistance = Defaults.MaxESPDistance,
 
--- Auto Rejoin on Kick / Disconnect
-GuiService.ErrorMessageChanged:Connect(function()
-    if autoRejoinEnabled then
-        task.wait(2)
-        TeleportService:Teleport(game.PlaceId, LP)
-    end
-end)
+    Sprint = false,
+    Fly = false,
+    Noclip = false,
+    InfiniteJump = false,
+    DoubleJump = false,
+    LowGravity = false,
+    AutoRun = false,
 
--- Combat / Auto Aim State
-local autoAimEnabled = false
-local aimbotHold = false
-local aimPart = "Head"
-local fovRadius = 150
-local showFOV = false
-local aimSmoothness = 0.2
-local teamCheck = true
-local wallCheck = false
+    ESPEnabled = false,
+    OverheadEnabled = false,
+    TeamColors = false,
 
--- Drawing FOV Circle
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-FOVCircle.Radius = fovRadius
-FOVCircle.Color = Color3.fromRGB(0, 255, 255)
-FOVCircle.Thickness = 1.5
-FOVCircle.Filled = false
-FOVCircle.Visible = false
+    CrosshairEnabled = false,
+    CrosshairSize = 10,
+    CrosshairGap = 4,
+    CrosshairThickness = 2,
+    CrosshairColor = Color3.fromRGB(0, 255, 100),
+}
 
--- Setup Character
-local function setupCharacter(char)
-    character = char
-    humanoid = char:WaitForChild("Humanoid")
-    root = char:WaitForChild("HumanoidRootPart")
+local Keybinds = {
+    Dash = Enum.KeyCode.Q,
+    Blink = Enum.KeyCode.E,
+    Sprint = Enum.KeyCode.LeftShift,
+}
+
+local running = true
+local Connections = {}
+local CharacterConnections = {}
+local PlayerConnections = {}
+
+local Character
+local Humanoid
+local Root
+
+local originalFOV = workspace.CurrentCamera
+    and workspace.CurrentCamera.FieldOfView or 70
+
+local originalCollisions = {}
+local jumpCount = 0
+local dashReady = true
+local flyVelocity
+local flyConnection
+local crosshairGui
+
+--==================================================
+-- HELPERS
+--==================================================
+
+local function connect(signal, callback, storage)
+    local connection = signal:Connect(callback)
+    table.insert(storage or Connections, connection)
+    return connection
 end
+
+local function notify(title, message)
+    if not running then return end
+
+    local gui = PlayerGui:FindFirstChild("IzttNickNotifications")
+    if not gui then return end
+
+    local label = gui:FindFirstChild("Message")
+    if not label then return end
+
+    label.Text = title .. "\n" .. message
+    label.Visible = true
+
+    task.delay(2.5, function()
+        if label.Parent then
+            label.Visible = false
+        end
+    end)
+end
+
+local function makeButton(parent, text, callback)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, -12, 0, 36)
+    button.BackgroundColor3 = Color3.fromRGB(45, 48, 60)
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.Text = text
+    button.Font = Enum.Font.GothamMedium
+    button.TextSize = 13
+    button.BorderSizePixel = 0
+    button.Parent = parent
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 7)
+    corner.Parent = button
+
+    connect(button.Activated, callback)
+    return button
+end
+
+local function makeSlider(parent, labelText, min, max, initial, callback)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, -12, 0, 58)
+    frame.BackgroundTransparency = 1
+    frame.Parent = parent
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 22)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 12
+    label.Text = labelText .. ": " .. initial
+    label.Parent = frame
+
+    local slider = Instance.new("TextButton")
+    slider.Position = UDim2.new(0, 0, 0, 29)
+    slider.Size = UDim2.new(1, 0, 0, 20)
+    slider.BackgroundColor3 = Color3.fromRGB(55, 58, 70)
+    slider.Text = ""
+    slider.BorderSizePixel = 0
+    slider.Parent = frame
+
+    local fill = Instance.new("Frame")
+    fill.BackgroundColor3 = Color3.fromRGB(255, 55, 85)
+    fill.BorderSizePixel = 0
+    fill.Parent = slider
+
+    local value = initial
+    local dragging = false
+
+    local function setValue(v)
+        value = math.clamp(math.floor(v), min, max)
+        local percent = (value - min) / (max - min)
+        fill.Size = UDim2.new(percent, 0, 1, 0)
+        label.Text = labelText .. ": " .. value
+        callback(value)
+    end
+
+    local function updateFromPosition(x)
+        local percent = math.clamp(
+            (x - slider.AbsolutePosition.X) / slider.AbsoluteSize.X,
+            0, 1
+        )
+        setValue(min + percent * (max - min))
+    end
+
+    connect(slider.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            updateFromPosition(input.Position.X)
+        end
+    end)
+
+    connect(UIS.InputChanged, function(input)
+        if dragging and (
+            input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch
+        ) then
+            updateFromPosition(input.Position.X)
+        end
+    end)
+
+    connect(UIS.InputEnded, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    setValue(initial)
+    return frame
+end
+
+local function makeToggle(parent, labelText, initial, callback)
+    local button = makeButton(parent, "", function() end)
+    local state = initial
+
+    local function update()
+        button.Text = labelText .. ": " .. (state and "ON" or "OFF")
+        button.BackgroundColor3 = state
+            and Color3.fromRGB(20, 130, 90)
+            or Color3.fromRGB(45, 48, 60)
+    end
+
+    button.Activated:Connect(function()
+        state = not state
+        update()
+        callback(state)
+    end)
+
+    update()
+    return button
+end
+
+--==================================================
+-- UI
+--==================================================
+
+local Screen = Instance.new("ScreenGui")
+Screen.Name = "IzttNickHubV22"
+Screen.ResetOnSpawn = false
+Screen.Parent = PlayerGui
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.fromOffset(520, 440)
+Main.Position = UDim2.new(0.5, -260, 0.5, -220)
+Main.BackgroundColor3 = Color3.fromRGB(24, 26, 34)
+Main.BorderSizePixel = 0
+Main.Parent = Screen
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 12)
+corner.Parent = Main
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 42)
+Title.BackgroundColor3 = Color3.fromRGB(35, 38, 49)
+Title.Text = "IzttNick Hub V2.2"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 18
+Title.Parent = Main
+
+local Tabs = Instance.new("Frame")
+Tabs.Position = UDim2.fromOffset(8, 50)
+Tabs.Size = UDim2.new(0, 112, 1, -58)
+Tabs.BackgroundTransparency = 1
+Tabs.Parent = Main
+
+local Content = Instance.new("Frame")
+Content.Position = UDim2.fromOffset(128, 50)
+Content.Size = UDim2.new(1, -136, 1, -58)
+Content.BackgroundTransparency = 1
+Content.Parent = Main
+
+local Pages = {}
+local currentPage
+
+local function createTab(name)
+    local page = Instance.new("ScrollingFrame")
+    page.Name = name
+    page.Size = UDim2.fromScale(1, 1)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 4
+    page.CanvasSize = UDim2.new()
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.Visible = false
+    page.Parent = Content
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 7)
+    layout.Parent = page
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 5)
+    padding.PaddingLeft = UDim.new(0, 5)
+    padding.Parent = page
+
+    local tabButton = makeButton(Tabs, name, function()
+        if currentPage then currentPage.Visible = false end
+        currentPage = page
+        page.Visible = true
+    end)
+
+    tabButton.Size = UDim2.new(1, 0, 0, 34)
+    Pages[name] = page
+
+    if not currentPage then
+        currentPage = page
+        page.Visible = true
+    end
+
+    return page
+end
+
+local Movement = createTab("Movement")
+local Visuals = createTab("Visuals")
+local Utilities = createTab("Utilities")
+local KeyPage = createTab("Keybinds")
+
+--==================================================
+-- CHARACTER SETUP
+--==================================================
+
+local function stopFly()
+    Settings.Fly = false
+
+    if flyConnection then
+        flyConnection:Disconnect()
+        flyConnection = nil
+    end
+
+    if flyVelocity then
+        flyVelocity:Destroy()
+        flyVelocity = nil
+    end
+
+    if Humanoid and Humanoid.Parent then
+        Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+end
+
+local function restoreNoclip()
+    for part, oldValue in pairs(originalCollisions) do
+        if part and part.Parent then
+            part.CanCollide = oldValue
+        end
+    end
+    table.clear(originalCollisions)
+end
+
+local function setupCharacter(char)
+    stopFly()
+    restoreNoclip()
+
+    Character = char
+    Humanoid = char:WaitForChild("Humanoid")
+    Root = char:WaitForChild("HumanoidRootPart")
+
+    Humanoid.UseJumpPower = true
+    Humanoid.WalkSpeed = Settings.WalkSpeed
+    Humanoid.JumpPower = Settings.JumpPower
+
+    jumpCount = 0
+end
+
+connect(LP.CharacterAdded, setupCharacter)
 
 if LP.Character then
     task.spawn(setupCharacter, LP.Character)
 end
 
-LP.CharacterAdded:Connect(function(char)
-    if flyConnection then flyConnection:Disconnect() flyConnection = nil end
-    if flyVelocity then flyVelocity:Destroy() flyVelocity = nil end
-    if flyGyro then flyGyro:Destroy() flyGyro = nil end
-    flying = false
-    setupCharacter(char)
-end)
+--==================================================
+-- MOVEMENT
+--==================================================
 
--- Movement, Noclip, Hitbox & CFrame Speed Enforcement
-RunService.Stepped:Connect(function()
-    if noclipEnabled and character then
-        for _, part in ipairs(character:GetDescendants()) do
+local function setFly(enabled)
+    if enabled then
+        if not Root or not Humanoid then
+            notify("Fly", "Character is not ready.")
+            return
+        end
+
+        stopFly()
+        Settings.Fly = true
+
+        flyVelocity = Instance.new("BodyVelocity")
+        flyVelocity.Name = "IzttNickFlyVelocity"
+        flyVelocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+        flyVelocity.Velocity = Vector3.zero
+        flyVelocity.Parent = Root
+
+        flyConnection = RunService.RenderStepped:Connect(function()
+            if not Settings.Fly or not Root or not Root.Parent
+                or not Humanoid or not Humanoid.Parent then
+                stopFly()
+                return
+            end
+
+            local camera = workspace.CurrentCamera
+            if not camera then return end
+
+            local direction = Vector3.zero
+            local cf = camera.CFrame
+
+            if UIS:IsKeyDown(Enum.KeyCode.W) then
+                direction += cf.LookVector
+            end
+            if UIS:IsKeyDown(Enum.KeyCode.S) then
+                direction -= cf.LookVector
+            end
+            if UIS:IsKeyDown(Enum.KeyCode.D) then
+                direction += cf.RightVector
+            end
+            if UIS:IsKeyDown(Enum.KeyCode.A) then
+                direction -= cf.RightVector
+            end
+            if UIS:IsKeyDown(Enum.KeyCode.Space) then
+                direction += Vector3.yAxis
+            end
+            if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
+                direction -= Vector3.yAxis
+            end
+
+            flyVelocity.Velocity =
+                direction.Magnitude > 0
+                and direction.Unit * Settings.FlySpeed
+                or Vector3.zero
+        end)
+
+        notify("Fly", "Flight enabled.")
+    else
+        stopFly()
+        notify("Fly", "Flight disabled.")
+    end
+end
+
+local function setNoclip(enabled)
+    Settings.Noclip = enabled
+
+    if not enabled then
+        restoreNoclip()
+    end
+
+    notify("Noclip", enabled and "Enabled" or "Disabled")
+end
+
+local function dash()
+    if not dashReady or not Root or not Humanoid then return end
+
+    local direction = Humanoid.MoveDirection
+    if direction.Magnitude == 0 then
+        direction = Root.CFrame.LookVector
+    end
+
+    dashReady = false
+    Root.AssemblyLinearVelocity =
+        direction.Unit * Settings.DashPower
+        + Vector3.new(0, Root.AssemblyLinearVelocity.Y, 0)
+
+    notify("Dash", "Dash activated.")
+
+    task.delay(1, function()
+        dashReady = true
+    end)
+end
+
+local function blink()
+    if not Root then return end
+
+    Root.CFrame = Root.CFrame + Root.CFrame.LookVector * Settings.BlinkDistance
+    notify("Blink", "Moved forward.")
+end
+
+connect(RunService.Heartbeat, function()
+    if not running then return end
+
+    if Humanoid and Humanoid.Parent then
+        Humanoid.WalkSpeed = Settings.Sprint
+            and Settings.SprintSpeed or Settings.WalkSpeed
+
+        Humanoid.UseJumpPower = true
+        Humanoid.JumpPower = Settings.JumpPower
+
+        if Settings.AutoRun and not Settings.Fly then
+            Humanoid:Move(Humanoid.MoveDirection.Magnitude > 0
+                and Humanoid.MoveDirection
+                or Root.CFrame.LookVector, false)
+        end
+    end
+
+    if Settings.Noclip and Character then
+        for _, part in ipairs(Character:GetDescendants()) do
             if part:IsA("BasePart") then
+                if originalCollisions[part] == nil then
+                    originalCollisions[part] = part.CanCollide
+                end
                 part.CanCollide = false
             end
         end
     end
+end)
 
-    if touchImmunityEnabled and character then
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanTouch = false
-            end
+connect(UIS.JumpRequest, function()
+    if not Humanoid or not Humanoid.Parent then return end
+
+    if Settings.InfiniteJump then
+        Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    elseif Settings.DoubleJump then
+        if Humanoid.FloorMaterial ~= Enum.Material.Air then
+            jumpCount = 1
+        elseif jumpCount < 2 then
+            jumpCount += 1
+            Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
         end
     end
 end)
 
-RunService.Heartbeat:Connect(function(dt)
-    if humanoid and humanoid.Parent then
-        humanoid.UseJumpPower = true
-        if humanoid.WalkSpeed ~= walkSpeedValue then
-            humanoid.WalkSpeed = walkSpeedValue
-        end
-        if humanoid.JumpPower ~= jumpPowerValue then
-            humanoid.JumpPower = jumpPowerValue
-        end
-    end
-
-    if cframeSpeedEnabled and root and humanoid and humanoid.MoveDirection.Magnitude > 0 then
-        root.CFrame = root.CFrame + (humanoid.MoveDirection * cframeSpeedValue * dt * 16)
-    end
-
-    if hitboxExpanderEnabled then
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= LP and player.Character then
-                local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-                if rootPart then
-                    rootPart.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-                    rootPart.Transparency = 0.7
-                    rootPart.CanCollide = false
-                end
-            end
-        end
+connect(RunService.Heartbeat, function()
+    if Humanoid and Humanoid.FloorMaterial ~= Enum.Material.Air then
+        jumpCount = 0
     end
 end)
 
--- Main Tab UI Controls
-Main:CreateInput({
-    Name = "Walk Speed (1-300)",
-    PlaceholderText = "16",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text)
-        local value = tonumber(text)
-        if not value then return end
-        walkSpeedValue = math.clamp(math.floor(value), 1, 300)
+--==================================================
+-- VISUALS: CROSSHAIR
+--==================================================
+
+local function createCrosshair()
+    if crosshairGui then
+        crosshairGui:Destroy()
     end
-})
 
-Main:CreateInput({
-    Name = "Jump Power (1-300)",
-    PlaceholderText = "50",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text)
-        local value = tonumber(text)
-        if not value then return end
-        jumpPowerValue = math.clamp(math.floor(value), 1, 300)
+    crosshairGui = Instance.new("ScreenGui")
+    crosshairGui.Name = "IzttNickCrosshair"
+    crosshairGui.IgnoreGuiInset = true
+    crosshairGui.ResetOnSpawn = false
+    crosshairGui.Enabled = Settings.CrosshairEnabled
+    crosshairGui.Parent = PlayerGui
+
+    local center = Instance.new("Frame")
+    center.Name = "Center"
+    center.AnchorPoint = Vector2.new(0.5, 0.5)
+    center.Position = UDim2.fromScale(0.5, 0.5)
+    center.Size = UDim2.fromOffset(0, 0)
+    center.BackgroundTransparency = 1
+    center.Parent = crosshairGui
+
+    for _, name in ipairs({"Top", "Bottom", "Left", "Right"}) do
+        local line = Instance.new("Frame")
+        line.Name = name
+        line.BorderSizePixel = 0
+        line.Parent = center
     end
-})
-
-Main:CreateToggle({
-    Name = "Noclip",
-    CurrentValue = false,
-    Callback = function(value)
-        noclipEnabled = value
-    end
-})
-
-Main:CreateToggle({
-    Name = "Low Gravity",
-    CurrentValue = false,
-    Callback = function(value)
-        lowGravityEnabled = value
-        workspace.Gravity = value and 50 or normalGravity
-    end
-})
-
-Main:CreateToggle({
-    Name = "CFrame Speed (Bypass Limit)",
-    CurrentValue = false,
-    Callback = function(value)
-        cframeSpeedEnabled = value
-    end
-})
-
-Main:CreateSlider({
-    Name = "CFrame Speed Multiplier",
-    Range = {1, 5},
-    Increment = 0.5,
-    CurrentValue = 1,
-    Callback = function(value)
-        cframeSpeedValue = value
-    end
-})
-
-Main:CreateSlider({
-    Name = "Camera FOV",
-    Range = {70, 120},
-    Increment = 1,
-    CurrentValue = 70,
-    Callback = function(value)
-        Camera.FieldOfView = value
-    end
-})
-
-Main:CreateButton({
-    Name = "Unlock Max Camera Zoom",
-    Callback = function()
-        LP.CameraMaxZoomDistance = 10000
-        Rayfield:Notify({
-            Title = "Zoom Unlocked",
-            Content = "You can now zoom out infinitely!",
-            Duration = 3,
-            Image = 4483362458,
-        })
-    end,
-})
-
--- Fly System
-local function stopFly()
-    flying = false
-    if flyConnection then flyConnection:Disconnect() flyConnection = nil end
-    if flyVelocity then flyVelocity:Destroy() flyVelocity = nil end
-    if flyGyro then flyGyro:Destroy() flyGyro = nil end
 end
 
-local function setFly(value)
-    if not value then
-        stopFly()
-        return
-    end
+local function updateCrosshair()
+    if not crosshairGui then return end
 
-    if flying or not root or not root.Parent then return end
-    flying = true
+    crosshairGui.Enabled = Settings.CrosshairEnabled
 
-    flyVelocity = Instance.new("BodyVelocity")
-    flyVelocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-    flyVelocity.Velocity = Vector3.zero
-    flyVelocity.Parent = root
+    local center = crosshairGui:FindFirstChild("Center")
+    if not center then return end
 
-    flyGyro = Instance.new("BodyGyro")
-    flyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
-    flyGyro.P = 10000
-    flyGyro.Parent = root
+    local size = Settings.CrosshairSize
+    local gap = Settings.CrosshairGap
+    local thickness = Settings.CrosshairThickness
+    local color = Settings.CrosshairColor
 
-    flyConnection = RunService.RenderStepped:Connect(function()
-        if not flying or not root or not root.Parent then
-            stopFly()
-            return
+    local positions = {
+        Top = {UDim2.fromOffset(-thickness/2, -gap-size), UDim2.fromOffset(thickness, size)},
+        Bottom = {UDim2.fromOffset(-thickness/2, gap), UDim2.fromOffset(thickness, size)},
+        Left = {UDim2.fromOffset(-gap-size, -thickness/2), UDim2.fromOffset(size, thickness)},
+        Right = {UDim2.fromOffset(gap, -thickness/2), UDim2.fromOffset(size, thickness)},
+    }
+
+    for name, data in pairs(positions) do
+        local line = center:FindFirstChild(name)
+        if line then
+            line.Position = data[1]
+            line.Size = data[2]
+            line.BackgroundColor3 = color
         end
-
-        local cam = workspace.CurrentCamera
-        if not cam then return end
-
-        local direction = Vector3.zero
-        if UIS:IsKeyDown(Enum.KeyCode.W) then direction += cam.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.S) then direction -= cam.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.A) then direction -= cam.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then direction += cam.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.Space) then direction += Vector3.yAxis end
-        if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then direction -= Vector3.yAxis end
-
-        flyVelocity.Velocity = direction.Magnitude > 0 and direction.Unit * flySpeed or Vector3.zero
-        flyGyro.CFrame = cam.CFrame
-    end)
-end
-
-Main:CreateSlider({
-    Name = "Fly Speed",
-    Range = {10, 200},
-    Increment = 10,
-    CurrentValue = 50,
-    Callback = function(value)
-        flySpeed = value
     end
-})
-
-Main:CreateToggle({
-    Name = "Fly",
-    CurrentValue = false,
-    Callback = setFly
-})
-
--- Auto Aim & Wall Checks
-local function isPartVisible(targetPart)
-    if not wallCheck then return true end
-    local origin = Camera.CFrame.Position
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    raycastParams.FilterDescendantsInstances = {LP.Character, targetPart.Parent}
-    raycastParams.IgnoreWater = true
-
-    local result = workspace:Raycast(origin, targetPart.Position - origin, raycastParams)
-    return result == nil
 end
 
-local function getTargetPlayer()
-    local closestTarget = nil
-    local shortestDistance = fovRadius
-    local mousePos = UIS:GetMouseLocation()
+createCrosshair()
+updateCrosshair()
 
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player == LP then continue end
-        if teamCheck and LP.Team and player.Team == LP.Team then continue end
+--==================================================
+-- VISUALS: PLAYER HIGHLIGHTS & OVERHEAD
+--==================================================
 
+local visualObjects = {}
+
+local function clearPlayerVisuals(player)
+    local objects = visualObjects[player]
+    if not objects then return end
+
+    for _, object in ipairs(objects) do
+        if object and object.Parent then
+            object:Destroy()
+        end
+    end
+
+    visualObjects[player] = nil
+end
+
+local function createPlayerVisuals(player, char)
+    if player == LP then return end
+
+    clearPlayerVisuals(player)
+
+    local head = char:WaitForChild("Head", 5)
+    local humanoid = char:WaitForChild("Humanoid", 5)
+    if not head or not humanoid then return end
+
+    local objects = {}
+    visualObjects[player] = objects
+
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "IzttNickHighlight"
+    highlight.Adornee = char
+    highlight.FillTransparency = 0.65
+    highlight.OutlineTransparency = 0
+    highlight.Parent = char
+    table.insert(objects, highlight)
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "IzttNickOverhead"
+    billboard.Size = UDim2.fromOffset(150, 38)
+    billboard.StudsOffset = Vector3.new(0, 2.7, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = head
+    table.insert(objects, billboard)
+
+    local label = Instance.new("TextLabel")
+    label.Name = "NameLabel"
+    label.Size = UDim2.new(1, 0, 0, 20)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextStrokeTransparency = 0.3
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 12
+    label.Parent = billboard
+
+    local barBG = Instance.new("Frame")
+    barBG.Position = UDim2.fromOffset(15, 23)
+    barBG.Size = UDim2.new(1, -30, 0, 6)
+    barBG.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    barBG.BorderSizePixel = 0
+    barBG.Parent = billboard
+
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.fromScale(1, 1)
+    bar.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+    bar.BorderSizePixel = 0
+    bar.Parent = barBG
+
+    local function updateHealth(health)
+        local percent = math.clamp(health / math.max(humanoid.MaxHealth, 1), 0, 1)
+        bar.Size = UDim2.fromScale(percent, 1)
+        bar.BackgroundColor3 = percent > 0.5
+            and Color3.fromRGB(0, 255, 100)
+            or percent > 0.25
+                and Color3.fromRGB(255, 200, 0)
+                or Color3.fromRGB(255, 50, 50)
+    end
+
+    local healthConnection = humanoid.HealthChanged:Connect(updateHealth)
+    table.insert(objects, {
+        Destroy = function()
+            healthConnection:Disconnect()
+        end
+    })
+
+    updateHealth(humanoid.Health)
+end
+
+local function updateVisuals()
+    if not Root then return end
+
+    for player, objects in pairs(visualObjects) do
         local char = player.Character
-        if not char then continue end
+        local targetRoot = char and char:FindFirstChild("HumanoidRootPart")
+        local highlight = char and char:FindFirstChild("IzttNickHighlight")
+        local billboard = char and char:FindFirstChild("IzttNickOverhead")
 
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum or hum.Health <= 0 then continue end
+        local distance = targetRoot
+            and (Root.Position - targetRoot.Position).Magnitude or math.huge
 
-        local targetPart = aimPart == "Random" and (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")) or char:FindFirstChild(aimPart)
-        if not targetPart then continue end
+        local inRange = distance <= Settings.MaxESPDistance
+        local sameTeam = player.Team ~= nil and player.Team == LP.Team
 
-        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
-        if onScreen then
-            local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-            if dist < shortestDistance and isPartVisible(targetPart) then
-                shortestDistance = dist
-                closestTarget = targetPart
-            end
-        end
-    end
-    return closestTarget
-end
+        local color = Settings.TeamColors and player.Team
+            and player.Team.TeamColor.Color
+            or sameTeam
+                and Color3.fromRGB(0, 255, 100)
+                or Color3.fromRGB(255, 60, 60)
 
-RunService.RenderStepped:Connect(function()
-    local mousePos = UIS:GetMouseLocation()
-    FOVCircle.Position = mousePos
-    FOVCircle.Radius = fovRadius
-    FOVCircle.Visible = showFOV and autoAimEnabled
-
-    if autoAimEnabled and aimbotHold then
-        local target = getTargetPlayer()
-        if target then
-            local targetPosition = target.Position
-            local currentCFrame = Camera.CFrame
-            local newDirection = (targetPosition - currentCFrame.Position).Unit
-            local newCFrame = CFrame.new(currentCFrame.Position, currentCFrame.Position + newDirection)
-            Camera.CFrame = currentCFrame:Lerp(newCFrame, aimSmoothness)
-        end
-    end
-end)
-
--- Combat Tab UI Controls
-Combat:CreateToggle({
-    Name = "Enable Auto Aim",
-    CurrentValue = false,
-    Callback = function(value)
-        autoAimEnabled = value
-    end
-})
-
-Combat:CreateDropdown({
-    Name = "Target Part",
-    Options = {"Head", "HumanoidRootPart", "Random"},
-    CurrentOption = "Head",
-    Callback = function(value)
-        aimPart = typeof(value) == "table" and value[1] or value
-    end
-})
-
-Combat:CreateSlider({
-    Name = "Aim Smoothness",
-    Range = {0.05, 1},
-    Increment = 0.05,
-    CurrentValue = 0.2,
-    Callback = function(value)
-        aimSmoothness = value
-    end
-})
-
-Combat:CreateToggle({
-    Name = "Hitbox Expander",
-    CurrentValue = false,
-    Callback = function(value)
-        hitboxExpanderEnabled = value
-    end
-})
-
-Combat:CreateSlider({
-    Name = "Hitbox Size",
-    Range = {2, 20},
-    Increment = 1,
-    CurrentValue = 5,
-    Callback = function(value)
-        hitboxSize = value
-    end
-})
-
-Combat:CreateToggle({
-    Name = "Show FOV Circle",
-    CurrentValue = false,
-    Callback = function(value)
-        showFOV = value
-    end
-})
-
-Combat:CreateSlider({
-    Name = "FOV Radius",
-    Range = {50, 500},
-    Increment = 10,
-    CurrentValue = 150,
-    Callback = function(value)
-        fovRadius = value
-    end
-})
-
-Combat:CreateToggle({
-    Name = "Team Check",
-    CurrentValue = true,
-    Callback = function(value)
-        teamCheck = value
-    end
-})
-
-Combat:CreateToggle({
-    Name = "Wall Check",
-    CurrentValue = false,
-    Callback = function(value)
-        wallCheck = value
-    end
-})
-
--- ESP Cleanup Logic
-local function clearESP(player)
-    if highlights[player] then
-        highlights[player]:Destroy()
-        highlights[player] = nil
-    end
-    if billboards[player] then
-        billboards[player]:Destroy()
-        billboards[player] = nil
-    end
-    if snaplineObjects[player] then
-        snaplineObjects[player]:Remove()
-        snaplineObjects[player] = nil
-    end
-end
-
-local function updateESP()
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player == LP or (not espEnabled and not snaplineEspEnabled) then
-            clearESP(player)
-            continue
+        if highlight then
+            highlight.Enabled = Settings.ESPEnabled and inRange
+            highlight.FillColor = color
+            highlight.OutlineColor = color
         end
 
-        local char = player.Character
-        local head = char and char:FindFirstChild("Head")
-        local myRoot = root
+        if billboard then
+            billboard.Enabled = Settings.OverheadEnabled and inRange
 
-        if not char or not head or not myRoot then
-            clearESP(player)
-            continue
-        end
-
-        -- Handle Box Highlights & Distance
-        if espEnabled then
-            local h = highlights[player]
-            if not h or h.Parent ~= char then
-                if h then h:Destroy() end
-                h = Instance.new("Highlight")
-                h.Name = "IzttNickTeamESP"
-                h.Adornee = char
-                h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                h.FillTransparency = 0.65
-                h.OutlineTransparency = 0
-                h.Parent = char
-                highlights[player] = h
-            end
-            h.FillColor = espColor
-            h.OutlineColor = espColor
-
-            local bb = billboards[player]
-            local textLabel
-            if not bb then
-                bb = Instance.new("BillboardGui")
-                bb.Name = "DistanceIndicator"
-                bb.Size = UDim2.fromOffset(100, 40)
-                bb.StudsOffset = Vector3.new(0, 3, 0)
-                bb.AlwaysOnTop = true
-                bb.Adornee = head
-
-                textLabel = Instance.new("TextLabel")
-                textLabel.Size = UDim2.fromScale(1, 1)
-                textLabel.BackgroundTransparency = 1
-                textLabel.TextScaled = true
-                textLabel.Font = Enum.Font.Code
-                textLabel.Parent = bb
-                bb.Parent = head
-                billboards[player] = bb
-            else
-                textLabel = bb:FindFirstChildOfClass("TextLabel")
-            end
-
-            if textLabel and char:FindFirstChild("HumanoidRootPart") then
-                local distance = math.floor((char.HumanoidRootPart.Position - myRoot.Position).Magnitude)
-                textLabel.Text = string.format("[%s] (%d studs)", player.Name, distance)
-                textLabel.TextColor3 = espColor
-            end
-        else
-            if highlights[player] then highlights[player]:Destroy() highlights[player] = nil end
-            if billboards[player] then billboards[player]:Destroy() billboards[player] = nil end
-        end
-
-        -- Handle Snaplines
-        if snaplineEspEnabled then
-            local rootPart = char:FindFirstChild("HumanoidRootPart")
-            if rootPart then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
-                local snapLine = snaplineObjects[player]
-                if not snapLine then
-                    snapLine = Drawing.new("Line")
-                    snapLine.Thickness = 1
-                    snaplineObjects[player] = snapLine
-                end
-
-                if onScreen then
-                    snapLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-                    snapLine.To = Vector2.new(screenPos.X, screenPos.Y)
-                    snapLine.Color = snaplineColor
-                    snapLine.Visible = true
-                else
-                    snapLine.Visible = false
-                end
-            end
-        else
-            if snaplineObjects[player] then
-                snaplineObjects[player]:Remove()
-                snaplineObjects[player] = nil
+            local label = billboard:FindFirstChild("NameLabel")
+            if label then
+                label.Text = string.format("%s [%d]", player.Name, math.floor(distance))
             end
         end
     end
 end
 
--- Visuals Tab UI Controls
-Visuals:CreateToggle({
-    Name = "Team ESP + Distance",
-    CurrentValue = false,
-    Callback = function(value)
-        espEnabled = value
-        if not espEnabled then
-            for _, player in ipairs(Players:GetPlayers()) do
-                clearESP(player)
-            end
-        end
-    end
-})
+local function watchPlayer(player)
+    if player == LP then return end
 
-Visuals:CreateColorPicker({
-    Name = "ESP Color",
-    Color = Color3.fromRGB(255, 40, 40),
-    Flag = "ESPColorFlag",
-    Callback = function(value)
-        espColor = value
-    end
-})
-
-Visuals:CreateToggle({
-    Name = "Snaplines ESP",
-    CurrentValue = false,
-    Callback = function(value)
-        snaplineEspEnabled = value
-    end
-})
-
-Visuals:CreateColorPicker({
-    Name = "Snapline Color",
-    Color = Color3.fromRGB(255, 255, 255),
-    Flag = "SnaplineColorFlag",
-    Callback = function(value)
-        snaplineColor = value
-    end
-})
-
-Visuals:CreateToggle({
-    Name = "X-Ray Mode (Walls Transparency)",
-    CurrentValue = false,
-    Callback = function(value)
-        xrayEnabled = value
-        for _, object in ipairs(workspace:GetDescendants()) do
-            if object:IsA("BasePart") and not object:IsDescendantOf(LP.Character) and not object.Parent:FindFirstChildOfClass("Humanoid") then
-                object.LocalTransparencyModifier = xrayEnabled and 0.6 or 0
-            end
-        end
-    end
-})
-
-Visuals:CreateToggle({
-    Name = "Hazard Immunity (Disable Touch Triggers)",
-    CurrentValue = false,
-    Callback = function(value)
-        touchImmunityEnabled = value
-        if not touchImmunityEnabled and character then
-            for _, part in ipairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanTouch = true
-                end
-            end
-        end
-    end
-})
-
-Visuals:CreateToggle({
-    Name = "Remove Fog",
-    CurrentValue = false,
-    Callback = function(value)
-        if value then
-            Lighting.FogEnd = 999999
-        else
-            Lighting.FogEnd = 1000
-        end
-    end
-})
-
-Visuals:CreateSlider({
-    Name = "Custom Clock Time",
-    Range = {0, 24},
-    Increment = 1,
-    CurrentValue = 14,
-    Callback = function(value)
-        Lighting.ClockTime = value
-    end
-})
-
-Players.PlayerRemoving:Connect(clearESP)
-
-RunService.RenderStepped:Connect(function()
-    if espEnabled or snaplineEspEnabled then
-        updateESP()
-    end
-end)
-
--- Performance Tab
-local originalLighting = {
-    GlobalShadows = Lighting.GlobalShadows,
-    FogEnd = Lighting.FogEnd,
-    Brightness = Lighting.Brightness,
-    ClockTime = Lighting.ClockTime
-}
-
-local fpsBoostEnabled = false
-local autoBrightEnabled = false
-local showPerformanceOverlay = false
-
-local function applyLighting()
-    if fpsBoostEnabled then
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 100000
-    else
-        Lighting.GlobalShadows = originalLighting.GlobalShadows
-        Lighting.FogEnd = originalLighting.FogEnd
+    local function onCharacter(char)
+        task.wait(0.5)
+        if not running or not player.Parent then return end
+        createPlayerVisuals(player, char)
     end
 
-    if autoBrightEnabled then
-        Lighting.Brightness = 3
-        Lighting.ClockTime = 14
-    else
-        Lighting.Brightness = originalLighting.Brightness
-        Lighting.ClockTime = originalLighting.ClockTime
+    if player.Character then
+        task.spawn(onCharacter, player.Character)
     end
+
+    connect(player.CharacterAdded, onCharacter, PlayerConnections)
 end
 
-Perf:CreateToggle({
-    Name = "FPS Boost",
-    CurrentValue = false,
-    Callback = function(value)
-        fpsBoostEnabled = value
-        applyLighting()
-    end
-})
+for _, player in ipairs(Players:GetPlayers()) do
+    watchPlayer(player)
+end
 
-Perf:CreateToggle({
-    Name = "Auto Bright",
-    CurrentValue = false,
-    Callback = function(value)
-        autoBrightEnabled = value
-        applyLighting()
-    end
-})
+connect(Players.PlayerAdded, watchPlayer)
 
--- Performance Overlay (FPS & Ping)
-local StatsGui = Instance.new("ScreenGui")
-StatsGui.Name = "IzttNickStats"
-StatsGui.ResetOnSpawn = false
-StatsGui.Parent = LP:WaitForChild("PlayerGui")
+connect(Players.PlayerRemoving, function(player)
+    clearPlayerVisuals(player)
+end)
 
-local StatsLabel = Instance.new("TextLabel")
-StatsLabel.Name = "StatsLabel"
-StatsLabel.Size = UDim2.fromOffset(180, 25)
-StatsLabel.Position = UDim2.fromScale(0.01, 0.01)
-StatsLabel.BackgroundTransparency = 0.5
-StatsLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-StatsLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
-StatsLabel.TextScaled = true
-StatsLabel.Font = Enum.Font.Code
-StatsLabel.Text = "FPS: -- | Ping: --ms"
-StatsLabel.Visible = false
-StatsLabel.Parent = StatsGui
+connect(RunService.RenderStepped, updateVisuals)
 
-Perf:CreateToggle({
-    Name = "Show FPS & Ping Overlay",
-    CurrentValue = false,
-    Callback = function(value)
-        showPerformanceOverlay = value
-        StatsLabel.Visible = value
-    end
-})
+--==================================================
+-- UI CONTROLS
+--==================================================
 
-local frameCount = 0
-local lastCheck = tick()
+makeSlider(Movement, "Walk Speed", 1, 100, Settings.WalkSpeed, function(v)
+    Settings.WalkSpeed = v
+end)
 
-RunService.RenderStepped:Connect(function()
-    frameCount += 1
-    local now = tick()
-    if now - lastCheck >= 1 then
-        local fps = math.floor(frameCount / (now - lastCheck))
-        frameCount = 0
-        lastCheck = now
-        
-        local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-        if showPerformanceOverlay then
-            StatsLabel.Text = string.format("FPS: %d | Ping: %dms", fps, ping)
-        end
+makeSlider(Movement, "Jump Power", 1, 150, Settings.JumpPower, function(v)
+    Settings.JumpPower = v
+end)
+
+makeSlider(Movement, "Sprint Speed", 16, 100, Settings.SprintSpeed, function(v)
+    Settings.SprintSpeed = v
+end)
+
+makeSlider(Movement, "Fly Speed", 10, 150, Settings.FlySpeed, function(v)
+    Settings.FlySpeed = v
+end)
+
+makeSlider(Movement, "Dash Power", 10, 150, Settings.DashPower, function(v)
+    Settings.DashPower = v
+end)
+
+makeToggle(Movement, "Sprint", false, function(v)
+    Settings.Sprint = v
+end)
+
+makeToggle(Movement, "Fly", false, setFly)
+makeToggle(Movement, "Noclip", false, setNoclip)
+
+makeToggle(Movement, "Infinite Jump", false, function(v)
+    Settings.InfiniteJump = v
+    if v then Settings.DoubleJump = false end
+end)
+
+makeToggle(Movement, "Double Jump", false, function(v)
+    Settings.DoubleJump = v
+    if v then Settings.InfiniteJump = false end
+end)
+
+makeToggle(Movement, "Low Gravity", false, function(v)
+    Settings.LowGravity = v
+    workspace.Gravity = v and 50 or Defaults.Gravity
+end)
+
+makeToggle(Movement, "Auto Run", false, function(v)
+    Settings.AutoRun = v
+end)
+
+makeToggle(Visuals, "Player Highlights", false, function(v)
+    Settings.ESPEnabled = v
+end)
+
+makeToggle(Visuals, "Name Tags & Health Bars", false, function(v)
+    Settings.OverheadEnabled = v
+end)
+
+makeToggle(Visuals, "Team Colors", false, function(v)
+    Settings.TeamColors = v
+end)
+
+makeSlider(Visuals, "ESP Max Distance", 50, 1000, Settings.MaxESPDistance, function(v)
+    Settings.MaxESPDistance = v
+end)
+
+makeToggle(Visuals, "Crosshair", false, function(v)
+    Settings.CrosshairEnabled = v
+    updateCrosshair()
+end)
+
+makeSlider(Visuals, "Crosshair Size", 4, 25, Settings.CrosshairSize, function(v)
+    Settings.CrosshairSize = v
+    updateCrosshair()
+end)
+
+makeSlider(Visuals, "Crosshair Gap", 0, 15, Settings.CrosshairGap, function(v)
+    Settings.CrosshairGap = v
+    updateCrosshair()
+end)
+
+makeSlider(Visuals, "Crosshair Thickness", 1, 6, Settings.CrosshairThickness, function(v)
+    Settings.CrosshairThickness = v
+    updateCrosshair()
+end)
+
+makeButton(Utilities, "Dash", dash)
+makeButton(Utilities, "Blink Forward", blink)
+
+makeSlider(Utilities, "Blink Distance", 5, 100, Settings.BlinkDistance, function(v)
+    Settings.BlinkDistance = v
+end)
+
+makeSlider(Utilities, "Camera FOV", 40, 120, originalFOV, function(v)
+    if workspace.CurrentCamera then
+        workspace.CurrentCamera.FieldOfView = v
     end
 end)
 
--- Crosshair Tab
-local GUI = Instance.new("ScreenGui")
-GUI.Name = "IzttNickCrosshair"
-GUI.ResetOnSpawn = false
-GUI.IgnoreGuiInset = true
-GUI.Parent = LP:WaitForChild("PlayerGui")
-
-local CrossLabel = Instance.new("TextLabel")
-CrossLabel.Name = "Crosshair"
-CrossLabel.Size = UDim2.fromOffset(30, 30)
-CrossLabel.Position = UDim2.fromScale(0.5, 0.5)
-CrossLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-CrossLabel.BackgroundTransparency = 1
-CrossLabel.Text = "+"
-CrossLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-CrossLabel.TextScaled = true
-CrossLabel.Font = Enum.Font.Code
-CrossLabel.Parent = GUI
-
-Cross:CreateToggle({
-    Name = "Show Crosshair",
-    CurrentValue = true,
-    Callback = function(value)
-        CrossLabel.Visible = value
-    end
-})
-
-Cross:CreateDropdown({
-    Name = "Crosshair Style",
-    Options = {"+", ".", "x", "o"},
-    CurrentOption = "+",
-    Callback = function(value)
-        CrossLabel.Text = typeof(value) == "table" and value[1] or value
-    end
-})
-
-Cross:CreateSlider({
-    Name = "Crosshair Size",
-    Range = {10, 60},
-    Increment = 2,
-    CurrentValue = 30,
-    Callback = function(value)
-        CrossLabel.Size = UDim2.fromOffset(value, value)
-    end
-})
-
-Cross:CreateDropdown({
-    Name = "Crosshair Color",
-    Options = {"Green", "Red", "White", "Cyan", "Yellow"},
-    CurrentOption = "Green",
-    Callback = function(value)
-        value = typeof(value) == "table" and value[1] or value
-        local colors = {
-            Green = Color3.fromRGB(0, 255, 0),
-            Red = Color3.fromRGB(255, 0, 0),
-            White = Color3.fromRGB(255, 255, 255),
-            Cyan = Color3.fromRGB(0, 255, 255),
-            Yellow = Color3.fromRGB(255, 255, 0)
-        }
-        CrossLabel.TextColor3 = colors[value] or colors.Green
-    end
-})
-
-Cross:CreateToggle({
-    Name = "Rainbow Crosshair",
-    CurrentValue = false,
-    Callback = function(value)
-        rainbowCrosshair = value
-    end
-})
-
-RunService.RenderStepped:Connect(function()
-    if rainbowCrosshair and CrossLabel then
-        local hue = (tick() * 2) % 1
-        CrossLabel.TextColor3 = Color3.fromHSV(hue, 1, 1)
+makeButton(Utilities, "Restore Camera FOV", function()
+    if workspace.CurrentCamera then
+        workspace.CurrentCamera.FieldOfView = originalFOV
     end
 end)
 
--- Teleport Tab UI Controls
-local TeleportSection = TeleportTab:CreateSection("Player Teleport")
+--==================================================
+-- KEYBINDS
+--==================================================
 
-local PlayerDropdown = TeleportTab:CreateDropdown({
-    Name = "Select Player",
-    Options = getPlayerList(),
-    CurrentOption = "",
-    MultipleOptions = false,
-    Flag = "SelectedPlayerDropdown",
-    Callback = function(Option)
-        if type(Option) == "table" then
-            selectedPlayerName = Option[1]
-        else
-            selectedPlayerName = Option
-        end
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Refresh Player List",
-    Callback = function()
-        PlayerDropdown:Refresh(getPlayerList(), true)
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Teleport to Player",
-    Callback = function()
-        if not selectedPlayerName or selectedPlayerName == "" then
-            Rayfield:Notify({
-                Title = "Teleport Error",
-                Content = "Please select a player from the dropdown first.",
-                Duration = 3,
-                Image = 4483362458,
-            })
-            return
-        end
-
-        local targetPlayer = Players:FindFirstChild(selectedPlayerName)
-        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-                LP.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-                Rayfield:Notify({
-                    Title = "Teleport Success",
-                    Content = "Teleported to " .. selectedPlayerName,
-                    Duration = 3,
-                    Image = 4483362458,
-                })
-            end
-        else
-            Rayfield:Notify({
-                Title = "Teleport Error",
-                Content = "Target player is not in game or missing character.",
-                Duration = 3,
-                Image = 4483362458,
-            })
-        end
-    end,
-})
-
-TeleportTab:CreateToggle({
-    Name = "Loop Attach to Selected Player",
-    CurrentValue = false,
-    Callback = function(value)
-        followEnabled = value
-        if followConnection then followConnection:Disconnect() followConnection = nil end
-        
-        if followEnabled then
-            followConnection = RunService.RenderStepped:Connect(function()
-                if selectedPlayerName then
-                    local targetPlayer = Players:FindFirstChild(selectedPlayerName)
-                    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and root then
-                        root.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 4)
-                    end
-                end
-            end)
-        end
-    end
-})
-
-TeleportTab:CreateToggle({
-    Name = "Spectate Selected Player",
-    CurrentValue = false,
-    Callback = function(value)
-        spectateEnabled = value
-        if spectateEnabled and selectedPlayerName then
-            local targetPlayer = Players:FindFirstChild(selectedPlayerName)
-            if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
-                Camera.CameraSubject = targetPlayer.Character.Humanoid
-            end
-        else
-            if humanoid then
-                Camera.CameraSubject = humanoid
-            end
-        end
-    end
-})
-
--- Server Utilities Section
-local ServerSection = TeleportTab:CreateSection("Server Utilities")
-
-TeleportTab:CreateToggle({
-    Name = "Auto Rejoin on Kick / Disconnect",
-    CurrentValue = false,
-    Callback = function(value)
-        autoRejoinEnabled = value
-    end
-})
-
-TeleportTab:CreateButton({
-    Name = "Rejoin Server",
-    Callback = function()
-        Rayfield:Notify({
-            Title = "Server Utility",
-            Content = "Rejoining current server...",
-            Duration = 3,
-            Image = 4483362458,
-        })
-        TeleportService:Teleport(game.PlaceId, LP)
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Server Hop",
-    Callback = function()
-        Rayfield:Notify({
-            Title = "Server Utility",
-            Content = "Searching for a new server...",
-            Duration = 3,
-            Image = 4483362458,
-        })
-        
-        local success, servers = pcall(function()
-            return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/0?sortOrder=Asc&limit=100"))
-        end)
-        
-        if success and servers and servers.data then
-            for _, s in ipairs(servers.data) do
-                if s.playing < s.maxPlayers and s.id ~= game.JobId then
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LP)
-                    return
-                end
-            end
-        end
-        
-        Rayfield:Notify({
-            Title = "Server Hop Failed",
-            Content = "Could not find an available server.",
-            Duration = 3,
-            Image = 4483362458,
-        })
-    end,
-})
-
-Players.PlayerAdded:Connect(function()
-    PlayerDropdown:Refresh(getPlayerList(), true)
-end)
-
-Players.PlayerRemoving:Connect(clearESP)
-Players.PlayerRemoving:Connect(function(player)
-    if player.Name == selectedPlayerName then
-        selectedPlayerName = nil
-    end
-    PlayerDropdown:Refresh(getPlayerList(), true)
-end)
-
--- Waypoints Tab UI Controls
-local WaypointSection = WaypointTab:CreateSection("Custom Waypoints")
-
-WaypointTab:CreateInput({
-    Name = "Waypoint Name",
-    PlaceholderText = "Enter Name (e.g., Base, Shop)",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text)
-        waypointNameToSave = text
-    end
-})
-
-WaypointTab:CreateButton({
-    Name = "Save Current Position as Waypoint",
-    Callback = function()
-        if not waypointNameToSave or waypointNameToSave == "" then
-            Rayfield:Notify({
-                Title = "Waypoint Error",
-                Content = "Please type a name for your waypoint first.",
-                Duration = 3,
-                Image = 4483362458,
-            })
-            return
-        end
-
-        if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-            savedWaypoints[waypointNameToSave] = LP.Character.HumanoidRootPart.CFrame
-            WaypointDropdown:Refresh(getWaypointList(), true)
-            Rayfield:Notify({
-                Title = "Waypoint Saved",
-                Content = "Saved position as '" .. waypointNameToSave .. "'",
-                Duration = 3,
-                Image = 4483362458,
-            })
-        end
-    end,
-})
-
-WaypointDropdown = WaypointTab:CreateDropdown({
-    Name = "Select Saved Waypoint",
-    Options = getWaypointList(),
-    CurrentOption = "No Waypoints Saved",
-    MultipleOptions = false,
-    Flag = "SelectedWaypointDropdown",
-    Callback = function(Option)
-        if type(Option) == "table" then
-            selectedWaypointName = Option[1]
-        else
-            selectedWaypointName = Option
-        end
-    end,
-})
-
-WaypointTab:CreateButton({
-    Name = "Teleport to Selected Waypoint",
-    Callback = function()
-        if not selectedWaypointName or selectedWaypointName == "No Waypoints Saved" or not savedWaypoints[selectedWaypointName] then
-            Rayfield:Notify({
-                Title = "Teleport Error",
-                Content = "Please select a valid saved waypoint first.",
-                Duration = 3,
-                Image = 4483362458,
-            })
-            return
-        end
-
-        if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-            LP.Character.HumanoidRootPart.CFrame = savedWaypoints[selectedWaypointName]
-            Rayfield:Notify({
-                Title = "Teleport Success",
-                Content = "Teleported to waypoint: " .. selectedWaypointName,
-                Duration = 3,
-                Image = 4483362458,
-            })
-        end
-    end,
-})
-
-WaypointTab:CreateButton({
-    Name = "Delete Selected Waypoint",
-    Callback = function()
-        if selectedWaypointName and savedWaypoints[selectedWaypointName] then
-            savedWaypoints[selectedWaypointName] = nil
-            WaypointDropdown:Refresh(getWaypointList(), true)
-            Rayfield:Notify({
-                Title = "Waypoint Deleted",
-                Content = "Removed waypoint.",
-                Duration = 3,
-                Image = 4483362458,
-            })
-        end
-    end,
-})
-
--- Keybind Manager Tab UI
-KeybindTab:CreateDropdown({
-    Name = "Fly Key",
-    Options = {"T", "F", "E", "X", "V"},
-    CurrentOption = "T",
-    Callback = function(value)
-        value = typeof(value) == "table" and value[1] or value
-        keybinds.Fly = Enum.KeyCode[value]
-    end
-})
-
-KeybindTab:CreateDropdown({
-    Name = "Noclip Key",
-    Options = {"N", "G", "H", "J"},
-    CurrentOption = "N",
-    Callback = function(value)
-        value = typeof(value) == "table" and value[1] or value
-        keybinds.Noclip = Enum.KeyCode[value]
-    end
-})
-
--- UI Settings / Theme Switcher Tab
-SettingsTab:CreateDropdown({
-    Name = "Select UI Theme",
-    Options = {"Default", "Ocean", "Amber", "Green", "DarkBlue", "Light", "Blox"},
-    CurrentOption = "Default",
-    Callback = function(value)
-        local selectedTheme = typeof(value) == "table" and value[1] or value
-        Window:SetTheme(selectedTheme)
-        Rayfield:Notify({
-            Title = "Theme Changed",
-            Content = "UI theme updated to " .. selectedTheme,
-            Duration = 3,
-            Image = 4483362458,
-        })
-    end
-})
-
--- Global Keybind & Action Input Handler
-UIS.InputBegan:Connect(function(input, processed)
+connect(UIS.InputBegan, function(input, processed)
     if processed then return end
 
-    if input.KeyCode == keybinds.Fly then
-        setFly(not flying)
-    elseif input.KeyCode == keybinds.Noclip then
-        noclipEnabled = not noclipEnabled
-    elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-        aimbotHold = true
+    if input.KeyCode == Keybinds.Sprint then
+        Settings.Sprint = true
+    elseif input.KeyCode == Keybinds.Dash then
+        dash()
+    elseif input.KeyCode == Keybinds.Blink then
+        blink()
     end
 end)
 
-UIS.InputEnded:Connect(function(input, processed)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        aimbotHold = false
+connect(UIS.InputEnded, function(input)
+    if input.KeyCode == Keybinds.Sprint then
+        Settings.Sprint = false
     end
 end)
 
-print("IzttNick Hub script loaded successfully.")
+makeButton(KeyPage, "Dash Key: Q", function()
+    notify("Keybind", "Dash uses Q. Change it in the script Keybinds table.")
+end)
+
+makeButton(KeyPage, "Blink Key: E", function()
+    notify("Keybind", "Blink uses E. Change it in the script Keybinds table.")
+end)
+
+makeButton(KeyPage, "Sprint Key: Left Shift", function()
+    notify("Keybind", "Sprint uses Left Shift.")
+end)
+
+--==================================================
+-- RESET / CLEANUP
+--==================================================
+
+local function resetHub()
+    Settings.Sprint = false
+    Settings.AutoRun = false
+    Settings.InfiniteJump = false
+    Settings.DoubleJump = false
+
+    setFly(false)
+    setNoclip(false)
+
+    Settings.LowGravity = false
+    workspace.Gravity = Defaults.Gravity
+
+    Settings.ESPEnabled = false
+    Settings.OverheadEnabled = false
+
+    Settings.CrosshairEnabled = false
+    updateCrosshair()
+
+    Settings.WalkSpeed = Defaults.WalkSpeed
+    Settings.JumpPower = Defaults.JumpPower
+    Settings.SprintSpeed = Defaults.SprintSpeed
+    Settings.FlySpeed = Defaults.FlySpeed
+    Settings.DashPower = Defaults.DashPower
+    Settings.BlinkDistance = Defaults.BlinkDistance
+    Settings.MaxESPDistance = Defaults.MaxESPDistance
+
+    if Humanoid and Humanoid.Parent then
+        Humanoid.WalkSpeed = Defaults.WalkSpeed
+        Humanoid.JumpPower = Defaults.JumpPower
+    end
+
+    if workspace.CurrentCamera then
+        workspace.CurrentCamera.FieldOfView = originalFOV
+    end
+
+    notify("Reset", "Settings restored.")
+end
+
+makeButton(Utilities, "Reset All Settings", resetHub)
+
+makeButton(Utilities, "Hide / Show Hub", function()
+    Main.Visible = not Main.Visible
+end)
+
+makeButton(Utilities, "Close Hub", function()
+    running = false
+
+    setFly(false)
+    restoreNoclip()
+
+    workspace.Gravity = Defaults.Gravity
+
+    if workspace.CurrentCamera then
+        workspace.CurrentCamera.FieldOfView = originalFOV
+    end
+
+    for _, objects in pairs(visualObjects) do
+        for _, object in ipairs(objects) do
+            if object and object.Destroy then
+                pcall(function() object:Destroy() end)
+            end
+        end
+    end
+
+    for _, connection in ipairs(Connections) do
+        connection:Disconnect()
+    end
+
+    for _, connection in ipairs(PlayerConnections) do
+        connection:Disconnect()
+    end
+
+    if crosshairGui then crosshairGui:Destroy() end
+    Screen:Destroy()
+end)
+
+--==================================================
+-- DRAG WINDOW
+--==================================================
+
+local dragging = false
+local dragStart
+local startPosition
+
+connect(Title.InputBegan, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPosition = Main.Position
+    end
+end)
+
+connect(UIS.InputChanged, function(input)
+    if dragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch
+    ) then
+        local delta = input.Position - dragStart
+        Main.Position = UDim2.new(
+            startPosition.X.Scale,
+            startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale,
+            startPosition.Y.Offset + delta.Y
+        )
+    end
+end)
+
+connect(UIS.InputEnded, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+--==================================================
+-- NOTIFICATION UI
+--==================================================
+
+local notificationGui = Instance.new("ScreenGui")
+notificationGui.Name = "IzttNickNotifications"
+notificationGui.ResetOnSpawn = false
+notificationGui.Parent = PlayerGui
+
+local message = Instance.new("TextLabel")
+message.Name = "Message"
+message.AnchorPoint = Vector2.new(1, 0)
+message.Position = UDim2.new(1, -20, 0, 20)
+message.Size = UDim2.fromOffset(260, 60)
+message.BackgroundColor3 = Color3.fromRGB(35, 38, 49)
+message.TextColor3 = Color3.new(1, 1, 1)
+message.TextWrapped = true
+message.Font = Enum.Font.GothamBold
+message.TextSize = 13
+message.Visible = false
+message.Parent = notificationGui
+
+notify("IzttNick Hub V2.2", "Successfully loaded!")
+
+print("IzttNick Hub V2.2 loaded successfully!")
