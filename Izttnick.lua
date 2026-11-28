@@ -1,4 +1,4 @@
--- IzttNick Hub | Rayfield Edition
+-- IzttNick Hub | Rayfield Edition (All Toggles Default OFF)
 -- Press 'K' to Open / Close UI | 'Y' to Toggle Camera FOV | 'P' to Toggle Fullbright
 
 local Players = game:GetService("Players")
@@ -15,15 +15,27 @@ local GuiService = game:GetService("GuiService")
 local LP = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
+if getgenv and getgenv().IzttNickHubRunning then
+	warn("[IzttNick Hub] Already running. Execute only once.")
+	return
+end
+if getgenv then
+	getgenv().IzttNickHubRunning = true
+end
+
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 local function Notify(title, content, duration)
-	Rayfield:Notify({
-		Title = title or "IzttNick Hub",
-		Content = content or "",
-		Duration = duration or 3,
-		Image = 4483362458
-	})
+	task.spawn(function()
+		pcall(function()
+			Rayfield:Notify({
+				Title = title or "IzttNick Hub",
+				Content = content or "",
+				Duration = duration or 3,
+				Image = 4483362458
+			})
+		end)
+	end)
 end
 
 -- =====================================================================
@@ -65,7 +77,7 @@ local function loadWaypoints()
 	end)
 end
 
-loadWaypoints()
+task.spawn(loadWaypoints)
 
 -- =====================================================================
 -- CREATE RAYFIELD WINDOW & TABS
@@ -99,13 +111,16 @@ local character, humanoid, root
 local flySpeed, flying = 50, false
 local flyConnection, flyVelocity, flyGyro
 local noclipEnabled = false
-local lowGravityEnabled = false
 local normalGravity = workspace.Gravity
+
+local noFallSlowEnabled = false
+local fastVaultEnabled = false
+local defaultWalkSpeed = 16
+local fallStateConn = nil
 
 local hitboxExpanderEnabled = false
 local hitboxSize = 5
 
-local espEnabled = false
 local snaplineEspEnabled = false
 local rainbowCrosshair = false
 local xrayEnabled = false
@@ -121,20 +136,28 @@ local originalLightingSettings = {
 	FogEnd = Lighting.FogEnd
 }
 
+local function applyFullbrightValues()
+	Lighting.Brightness = 2
+	Lighting.ClockTime = 14
+	Lighting.GlobalShadows = false
+	Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+	Lighting.FogEnd = 999999
+end
+
+local function restoreLightingValues()
+	Lighting.Brightness = originalLightingSettings.Brightness
+	Lighting.ClockTime = originalLightingSettings.ClockTime
+	Lighting.GlobalShadows = originalLightingSettings.GlobalShadows
+	Lighting.OutdoorAmbient = originalLightingSettings.OutdoorAmbient
+	Lighting.FogEnd = originalLightingSettings.FogEnd
+end
+
 local function setFullbright(enabled)
 	fullbrightEnabled = enabled and true or false
 	if fullbrightEnabled then
-		Lighting.Brightness = 2
-		Lighting.ClockTime = 14
-		Lighting.GlobalShadows = false
-		Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-		Lighting.FogEnd = 999999
+		applyFullbrightValues()
 	else
-		Lighting.Brightness = originalLightingSettings.Brightness
-		Lighting.ClockTime = originalLightingSettings.ClockTime
-		Lighting.GlobalShadows = originalLightingSettings.GlobalShadows
-		Lighting.OutdoorAmbient = originalLightingSettings.OutdoorAmbient
-		Lighting.FogEnd = originalLightingSettings.FogEnd
+		restoreLightingValues()
 	end
 end
 
@@ -144,39 +167,20 @@ RunService.Heartbeat:Connect(function(dt)
 	fullbrightRefresh += dt
 	if fullbrightRefresh >= 0.5 then
 		fullbrightRefresh = 0
-		Lighting.Brightness = 2
-		Lighting.ClockTime = 14
-		Lighting.GlobalShadows = false
-		Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-		Lighting.FogEnd = 999999
+		applyFullbrightValues()
 	end
 end)
 
-local highlights = {}
-local billboards = {}
-local snaplineObjects = {}
-
-local espColor = Color3.fromRGB(255, 40, 40)
-local snaplineColor = Color3.fromRGB(255, 255, 255)
-
 -- =====================================================================
--- ASYMMETRIC / MAP / STATUS ESP STATE & LOGIC
+-- ASYMMETRIC / MAP ESP STATE & LOGIC
 -- =====================================================================
 local ESP = {
-	Survivor = true,
-	Killer = true,
-	Generator = true,
-	Pallet = true,
-	Window = true,
+	Survivor = false,
+	Killer = false,
+	Generator = false,
+	Pallet = false,
+	Window = false,
 	Distance = 1000
-}
-
-local ESPStatus = {
-	Enabled = false,
-	ShowName = true,
-	ShowDistance = true,
-	ShowHealth = false,
-	Radius = 1000
 }
 
 local TeamColors = {
@@ -195,6 +199,16 @@ local function getRoot()
 	if LP.Character then
 		root = LP.Character:FindFirstChild("HumanoidRootPart")
 		return root
+	end
+	return nil
+end
+
+local function getObjectPosition(obj)
+	if not obj or not obj.Parent then return nil end
+	if obj:IsA("Model") then
+		return obj:GetPivot().Position
+	elseif obj:IsA("BasePart") then
+		return obj.Position
 	end
 	return nil
 end
@@ -242,8 +256,8 @@ local function GetGameValue(obj, name)
 
 	local child = obj:FindFirstChild(name)
 	if child then
-		local success, val = pcall(function() return child.Value end)
-		if success then return val end
+		local ok, val = pcall(function() return child.Value end)
+		if ok then return val end
 	end
 
 	return nil
@@ -283,12 +297,7 @@ end
 local function UpdateGenerator(generator, currentRoot)
 	if not generator or not generator.Parent then return end
 
-	local pos
-	if generator:IsA("Model") then
-		pos = generator:GetPivot().Position
-	elseif generator:IsA("BasePart") then
-		pos = generator.Position
-	end
+	local pos = getObjectPosition(generator)
 	local withinRange = (not currentRoot) or (not pos) or ((pos - currentRoot.Position).Magnitude <= ESP.Distance)
 
 	if not ESP.Generator or not withinRange then
@@ -300,10 +309,7 @@ local function UpdateGenerator(generator, currentRoot)
 		return
 	end
 
-	local percent =
-		GetGameValue(generator, "RepairProgress") or
-		GetGameValue(generator, "Progress") or 0
-
+	local percent = GetGameValue(generator, "RepairProgress") or GetGameValue(generator, "Progress") or 0
 	local billboard = generator:FindFirstChild("GenESP")
 
 	if percent >= 100 then
@@ -330,14 +336,7 @@ end
 
 local function UpdateMapESP(obj, currentRoot)
 	if not obj or not currentRoot then return end
-
-	local pos
-	if obj:IsA("Model") then
-		pos = obj:GetPivot().Position
-	elseif obj:IsA("BasePart") then
-		pos = obj.Position
-	end
-
+	local pos = getObjectPosition(obj)
 	if not pos then return end
 
 	local distance = (pos - currentRoot.Position).Magnitude
@@ -348,101 +347,11 @@ local function UpdateMapESP(obj, currentRoot)
 		else
 			removeESP(obj)
 		end
-	end
-
-	if obj.Name == "Pallet" or obj.Name == "Palletwrong" then
+	elseif obj.Name == "Pallet" or obj.Name == "Palletwrong" then
 		if ESP.Pallet and distance <= ESP.Distance then
 			createESP(obj, PalletColor)
 		else
 			removeESP(obj)
-		end
-	end
-end
-
-local StatusESP = {}
-
-local function removeStatusESP(char)
-	if StatusESP[char] then
-		StatusESP[char]:Destroy()
-		StatusESP[char] = nil
-	end
-end
-
-local function createStatusESP(player, char, currentRoot)
-	if not ESPStatus.Enabled then
-		removeStatusESP(char)
-		return
-	end
-
-	if not currentRoot then return end
-
-	local head = char:FindFirstChild("Head")
-	local hum = char:FindFirstChildOfClass("Humanoid")
-
-	if not head or not hum then return end
-
-	local isDown =
-		hum.Health <= 0
-		or hum.Health < 2
-		or char:GetAttribute("Downed") == true
-		or char:GetAttribute("IsDown") == true
-		or char:GetAttribute("Knocked") == true
-
-	local dist = (head.Position - currentRoot.Position).Magnitude
-
-	if dist > ESPStatus.Radius then
-		removeStatusESP(char)
-		return
-	end
-
-	local text = ""
-	if isDown then text = "🔻 DOWN\n" end
-	if ESPStatus.ShowName then text = text .. player.Name .. "\n" end
-	if ESPStatus.ShowDistance then text = text .. string.format("Dist: %.0f\n", dist) end
-	if ESPStatus.ShowHealth then text = text .. string.format("HP: %.0f\n", hum.Health) end
-
-	if text == "" then
-		removeStatusESP(char)
-		return
-	end
-
-	local teamColor = Color3.new(1, 1, 1)
-	if player.Team then
-		if player.Team.Name == "Killer" then
-			teamColor = TeamColors.Killer
-		elseif player.Team.Name == "Survivors" then
-			teamColor = TeamColors.Survivor
-		end
-	end
-	if isDown then
-		teamColor = TeamColors.Killer
-	end
-
-	local billboard = StatusESP[char]
-	if not billboard then
-		billboard = Instance.new("BillboardGui")
-		billboard.Size = UDim2.new(0, 120, 0, 50)
-		billboard.AlwaysOnTop = true
-
-		local label = Instance.new("TextLabel")
-		label.Size = UDim2.new(1, 0, 1, 0)
-		label.BackgroundTransparency = 1
-		label.TextColor3 = teamColor
-		label.TextStrokeTransparency = 0
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 12
-		label.Text = text
-		label.Parent = billboard
-
-		billboard.Adornee = head
-		billboard.StudsOffset = Vector3.new(0, 2.5, 0)
-		billboard.Parent = char
-		StatusESP[char] = billboard
-	else
-		local label = billboard:FindFirstChildOfClass("TextLabel")
-		if label then
-			label.Text = text
-			label.TextColor3 = teamColor
 		end
 	end
 end
@@ -469,9 +378,15 @@ local function removeCache(obj)
 	Cached.Pallets[obj] = nil
 end
 
-for _, obj in ipairs(workspace:GetDescendants()) do
-	cacheObject(obj)
-end
+task.spawn(function()
+	local descendants = workspace:GetDescendants()
+	for i, obj in ipairs(descendants) do
+		cacheObject(obj)
+		if i % 500 == 0 then
+			task.wait()
+		end
+	end
+end)
 
 workspace.DescendantAdded:Connect(cacheObject)
 workspace.DescendantRemoving:Connect(removeCache)
@@ -489,27 +404,23 @@ RunService.RenderStepped:Connect(function()
 			if p ~= LP and p.Character then
 				local char = p.Character
 				local hum = char:FindFirstChildOfClass("Humanoid")
+				local hrp = char:FindFirstChild("HumanoidRootPart")
 
-				if hum and hum.Health > 0 then
-					local hrp = char:FindFirstChild("HumanoidRootPart")
-					if hrp then
-						local distance = (hrp.Position - currentRoot.Position).Magnitude
-						if distance <= ESP.Distance then
-							if ESP.Survivor and p.Team and p.Team.Name == "Survivors" then
-								createESP(char, TeamColors.Survivor)
-							elseif ESP.Killer and p.Team and p.Team.Name == "Killer" then
-								createESP(char, TeamColors.Killer)
-							else
-								removeESP(char)
-							end
+				if hum and hum.Health > 0 and hrp then
+					local distance = (hrp.Position - currentRoot.Position).Magnitude
+					if distance <= ESP.Distance then
+						if ESP.Survivor and p.Team and p.Team.Name == "Survivors" then
+							createESP(char, TeamColors.Survivor)
+						elseif ESP.Killer and p.Team and p.Team.Name == "Killer" then
+							createESP(char, TeamColors.Killer)
 						else
 							removeESP(char)
 						end
+					else
+						removeESP(char)
 					end
-					createStatusESP(p, char, currentRoot)
 				else
 					removeESP(char)
-					removeStatusESP(char)
 				end
 			end
 		end
@@ -518,15 +429,100 @@ RunService.RenderStepped:Connect(function()
 			UpdateGenerator(gen, currentRoot)
 		end
 
-		for obj in pairs(Cached.Windows) do UpdateMapESP(obj, currentRoot) end
-		for obj in pairs(Cached.Pallets) do UpdateMapESP(obj, currentRoot) end
+		for obj in pairs(Cached.Windows) do
+			UpdateMapESP(obj, currentRoot)
+		end
+
+		for obj in pairs(Cached.Pallets) do
+			UpdateMapESP(obj, currentRoot)
+		end
+	end
+end)
+
+-- =====================================================================
+-- NO FALL SLOW & FAST VAULT (WINDOW & PALLET)
+-- =====================================================================
+local function applyNoFallSlow(hum)
+	if not noFallSlowEnabled or not hum or hum.Health <= 0 then return end
+	if hum.WalkSpeed < defaultWalkSpeed and not flying then
+		hum.WalkSpeed = defaultWalkSpeed
+	end
+end
+
+local function bindFallSlowHandler(hum)
+	if fallStateConn then
+		fallStateConn:Disconnect()
+		fallStateConn = nil
+	end
+	if not hum then return end
+	defaultWalkSpeed = hum.WalkSpeed > 0 and hum.WalkSpeed or 16
+	fallStateConn = hum.StateChanged:Connect(function(_, newState)
+		if not noFallSlowEnabled then return end
+		if newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.Running then
+			task.defer(function()
+				applyNoFallSlow(hum)
+			end)
+		end
+	end)
+end
+
+local function processFastVault(currentRoot)
+	if not fastVaultEnabled or not currentRoot then return end
+
+	local vaultCollections = {Cached.Windows, Cached.Pallets}
+	for _, collection in ipairs(vaultCollections) do
+		for vaultObj in pairs(collection) do
+			local pos = getObjectPosition(vaultObj)
+			if pos and (pos - currentRoot.Position).Magnitude <= 14 then
+				for _, desc in ipairs(vaultObj:GetDescendants()) do
+					if desc:IsA("ProximityPrompt") then
+						if desc.HoldDuration > 0.02 then
+							desc.HoldDuration = 0.02
+						end
+						if desc.Enabled and (desc.ObjectText ~= "" or desc.ActionText ~= "") then
+							pcall(function()
+								if fireproximityprompt then
+									fireproximityprompt(desc)
+								end
+							end)
+						end
+					end
+				end
+				if character then
+					for _, track in ipairs(character:GetDescendants()) do
+						if track:IsA("AnimationTrack") then
+							local lowerName = string.lower(track.Name)
+							if string.find(lowerName, "vault", 1, true)
+								or string.find(lowerName, "pallet", 1, true)
+								or string.find(lowerName, "window", 1, true) then
+								pcall(function()
+									track:AdjustSpeed(2.2)
+								end)
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
+RunService.Heartbeat:Connect(function()
+	if noFallSlowEnabled and humanoid then
+		applyNoFallSlow(humanoid)
+	end
+	if fastVaultEnabled then
+		local currentRoot = getRoot()
+		if currentRoot then
+			processFastVault(currentRoot)
+		end
 	end
 end)
 
 -- =====================================================================
 -- AUTO SKILL CHECK
 -- =====================================================================
-local autoSkillCheckEnabled = true
+local autoSkillCheckEnabled = false
 local skillCheckBusy = false
 local skillCheckConnection = nil
 local SkillCheckTouchID = 8822
@@ -648,15 +644,12 @@ local aimPart = "Head"
 local fovRadius = 150
 local showFOV = false
 local aimSmoothness = 0.2
-local teamCheck = true
+local teamCheck = false
 local wallCheck = false
 
-local cameraFovEnabled = true
+local cameraFovEnabled = false
 local cameraFovValue = 120
 local originalCameraFov = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or 70
-if workspace.CurrentCamera then
-	workspace.CurrentCamera.FieldOfView = cameraFovValue
-end
 
 UIS.InputBegan:Connect(function(input, processed)
 	if not processed and input.KeyCode == Enum.KeyCode.Y then
@@ -669,29 +662,43 @@ UIS.InputBegan:Connect(function(input, processed)
 	end
 end)
 
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-FOVCircle.Radius = fovRadius
-FOVCircle.Color = Color3.fromRGB(0, 255, 255)
-FOVCircle.Thickness = 1.5
-FOVCircle.Filled = false
-FOVCircle.Visible = false
+local FOVCircle
+pcall(function()
+	if Drawing and Drawing.new then
+		FOVCircle = Drawing.new("Circle")
+		FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+		FOVCircle.Radius = fovRadius
+		FOVCircle.Color = Color3.fromRGB(0, 255, 255)
+		FOVCircle.Thickness = 1.5
+		FOVCircle.Filled = false
+		FOVCircle.Visible = false
+	end
+end)
 
-local function setupCharacter(char)
-	character = char
-	humanoid = char:WaitForChild("Humanoid")
-	root = char:WaitForChild("HumanoidRootPart")
-end
-
-if LP.Character then
-	task.spawn(setupCharacter, LP.Character)
-end
-
-LP.CharacterAdded:Connect(function(char)
+local function stopFly()
+	flying = false
 	if flyConnection then flyConnection:Disconnect() flyConnection = nil end
 	if flyVelocity then flyVelocity:Destroy() flyVelocity = nil end
 	if flyGyro then flyGyro:Destroy() flyGyro = nil end
-	flying = false
+end
+
+local function setupCharacter(char)
+	task.spawn(function()
+		character = char
+		humanoid = char:WaitForChild("Humanoid", 15)
+		root = char:WaitForChild("HumanoidRootPart", 15)
+		if humanoid then
+			bindFallSlowHandler(humanoid)
+		end
+	end)
+end
+
+if LP.Character then
+	setupCharacter(LP.Character)
+end
+
+LP.CharacterAdded:Connect(function(char)
+	stopFly()
 	setupCharacter(char)
 end)
 
@@ -723,68 +730,6 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
-
--- =====================================================================
--- HEAL (E KEY) - uses a healing tool already available to the player
--- =====================================================================
-local healKey = Enum.KeyCode.E
-local healBusy = false
-
-local function findHealingTool()
-	local backpack = LP:FindFirstChildOfClass("Backpack")
-	local containers = {character, backpack}
-	local keywords = {"heal", "medkit", "med kit", "bandage", "firstaid", "first aid"}
-	for _, container in ipairs(containers) do
-		if container then
-			for _, item in ipairs(container:GetChildren()) do
-				if item:IsA("Tool") then
-					local lowerName = string.lower(item.Name)
-					for _, keyword in ipairs(keywords) do
-						if string.find(lowerName, keyword, 1, true) then
-							return item
-						end
-					end
-				end
-			end
-		end
-	end
-	return nil
-end
-
-local function useHeal()
-	if healBusy then return end
-	if not character or not humanoid or humanoid.Health <= 0 then
-		Notify("Heal", "Your character is not ready.", 2)
-		return
-	end
-	if humanoid.Health >= humanoid.MaxHealth then
-		Notify("Heal", "Your health is already full.", 2)
-		return
-	end
-	local tool = findHealingTool()
-	if not tool then
-		Notify("Heal", "No healing tool found. Pick up a medkit or bandage first.", 3)
-		return
-	end
-	healBusy = true
-	task.spawn(function()
-		local ok, err = pcall(function()
-			if tool.Parent ~= character and humanoid then
-				humanoid:EquipTool(tool)
-				task.wait(0.15)
-			end
-			tool:Activate()
-		end)
-		if ok then
-			Notify("Heal", "Healing item activated.", 2)
-		else
-			Notify("Heal", "Could not activate the healing item.", 2)
-		end
-		task.wait(0.5)
-		healBusy = false
-	end)
-end
-
 -- =====================================================================
 -- MAIN TAB
 -- =====================================================================
@@ -803,17 +748,30 @@ Main:CreateToggle({
 	CurrentValue = false,
 	Flag = "LowGravityToggle",
 	Callback = function(value)
-		lowGravityEnabled = value
 		workspace.Gravity = value and 50 or normalGravity
 	end
 })
 
-local function stopFly()
-	flying = false
-	if flyConnection then flyConnection:Disconnect() flyConnection = nil end
-	if flyVelocity then flyVelocity:Destroy() flyVelocity = nil end
-	if flyGyro then flyGyro:Destroy() flyGyro = nil end
-end
+Main:CreateToggle({
+	Name = "No Fall Slow",
+	CurrentValue = false,
+	Flag = "NoFallSlowToggle",
+	Callback = function(value)
+		noFallSlowEnabled = value
+		if value and humanoid then
+			applyNoFallSlow(humanoid)
+		end
+	end
+})
+
+Main:CreateToggle({
+	Name = "Fast Vault Window & Pallet",
+	CurrentValue = false,
+	Flag = "FastVaultToggle",
+	Callback = function(value)
+		fastVaultEnabled = value
+	end
+})
 
 local function setFly(value)
 	if not value then
@@ -894,16 +852,10 @@ Main:CreateButton({
 	end
 })
 
-Main:CreateSection("Character Recovery")
-Main:CreateButton({
-	Name = "Heal (Press E)",
-	Callback = useHeal
-})
-
 Main:CreateSection("Skill Checks")
 Main:CreateToggle({
 	Name = "Auto Skill Check",
-	CurrentValue = true,
+	CurrentValue = false,
 	Flag = "AutoSkillCheckToggle",
 	Callback = function(value)
 		autoSkillCheckEnabled = value
@@ -914,7 +866,6 @@ Main:CreateToggle({
 		end
 	end
 })
-startSkillCheck()
 
 -- =====================================================================
 -- COMBAT TAB
@@ -941,7 +892,9 @@ local function getTargetPlayer()
 		if not char then continue end
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		if not hum or hum.Health <= 0 then continue end
-		local targetPart = aimPart == "Random" and (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")) or char:FindFirstChild(aimPart)
+		local targetPart = aimPart == "Random"
+			and (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart"))
+			or char:FindFirstChild(aimPart)
 		if not targetPart then continue end
 		local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
 		if onScreen then
@@ -954,26 +907,6 @@ local function getTargetPlayer()
 	end
 	return closestTarget
 end
-
-RunService.RenderStepped:Connect(function()
-	if cameraFovEnabled and workspace.CurrentCamera then
-		workspace.CurrentCamera.FieldOfView = cameraFovValue
-	end
-	local mousePos = UIS:GetMouseLocation()
-	FOVCircle.Position = mousePos
-	FOVCircle.Radius = fovRadius
-	FOVCircle.Visible = showFOV and autoAimEnabled
-	if autoAimEnabled and aimbotHold then
-		local target = getTargetPlayer()
-		if target then
-			local targetPosition = target.Position
-			local currentCFrame = Camera.CFrame
-			local newDirection = (targetPosition - currentCFrame.Position).Unit
-			local newCFrame = CFrame.new(currentCFrame.Position, currentCFrame.Position + newDirection)
-			Camera.CFrame = currentCFrame:Lerp(newCFrame, aimSmoothness)
-		end
-	end
-end)
 
 Combat:CreateSection("Auto Aim (Hold Right-Click)")
 Combat:CreateToggle({
@@ -1023,7 +956,7 @@ Combat:CreateSlider({
 
 Combat:CreateToggle({
 	Name = "Team Check",
-	CurrentValue = true,
+	CurrentValue = false,
 	Flag = "TeamCheckToggle",
 	Callback = function(value) teamCheck = value end
 })
@@ -1056,107 +989,65 @@ Combat:CreateSlider({
 -- =====================================================================
 -- VISUALS TAB
 -- =====================================================================
-local function clearESP(player)
-	if highlights[player] then highlights[player]:Destroy() highlights[player] = nil end
-	if billboards[player] then billboards[player]:Destroy() billboards[player] = nil end
-	if snaplineObjects[player] then snaplineObjects[player]:Remove() snaplineObjects[player] = nil end
+local snaplineObjects = {}
+local snaplineColor = Color3.fromRGB(255, 255, 255)
+
+local function clearSnapline(player)
+	if snaplineObjects[player] then
+		snaplineObjects[player]:Remove()
+		snaplineObjects[player] = nil
+	end
 end
 
-local function updateESP()
+local function updateSnaplines()
 	for _, player in ipairs(Players:GetPlayers()) do
-		if player == LP or (not espEnabled and not snaplineEspEnabled) then
-			clearESP(player)
+		if player == LP or not snaplineEspEnabled then
+			clearSnapline(player)
 			continue
 		end
 		local char = player.Character
-		local head = char and char:FindFirstChild("Head")
-		local myRoot = root
-		if not char or not head or not myRoot then
-			clearESP(player)
+		local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+		if not rootPart then
+			clearSnapline(player)
 			continue
 		end
-		if espEnabled then
-			local h = highlights[player]
-			if not h or h.Parent ~= char then
-				if h then h:Destroy() end
-				h = Instance.new("Highlight")
-				h.Name = "IzttNickTeamESP"
-				h.Adornee = char
-				h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-				h.FillTransparency = 0.65
-				h.OutlineTransparency = 0
-				h.Parent = char
-				highlights[player] = h
-			end
-			h.FillColor = espColor
-			h.OutlineColor = espColor
-			local bb = billboards[player]
-			local textLabel
-			if not bb then
-				bb = Instance.new("BillboardGui")
-				bb.Name = "DistanceIndicator"
-				bb.Size = UDim2.fromOffset(100, 40)
-				bb.StudsOffset = Vector3.new(0, 3, 0)
-				bb.AlwaysOnTop = true
-				bb.Adornee = head
-				textLabel = Instance.new("TextLabel")
-				textLabel.Size = UDim2.fromScale(1, 1)
-				textLabel.BackgroundTransparency = 1
-				textLabel.TextScaled = true
-				textLabel.Font = Enum.Font.Code
-				textLabel.Parent = bb
-				bb.Parent = head
-				billboards[player] = bb
+
+		local snapLine = snaplineObjects[player]
+		if not snapLine then
+			local ok, line = pcall(function()
+				if Drawing and Drawing.new then
+					local obj = Drawing.new("Line")
+					obj.Thickness = 1
+					return obj
+				end
+			end)
+			if ok and line then
+				snapLine = line
+				snaplineObjects[player] = snapLine
 			else
-				textLabel = bb:FindFirstChildOfClass("TextLabel")
+				continue
 			end
-			if textLabel and char:FindFirstChild("HumanoidRootPart") then
-				local distance = math.floor((char.HumanoidRootPart.Position - myRoot.Position).Magnitude)
-				textLabel.Text = string.format("[%s] (%d studs)", player.Name, distance)
-				textLabel.TextColor3 = espColor
-			end
-		else
-			if highlights[player] then highlights[player]:Destroy() highlights[player] = nil end
-			if billboards[player] then billboards[player]:Destroy() billboards[player] = nil end
 		end
-		if snaplineEspEnabled then
-			local rootPart = char:FindFirstChild("HumanoidRootPart")
-			if rootPart then
-				local screenPos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
-				local snapLine = snaplineObjects[player]
-				if not snapLine then
-					snapLine = Drawing.new("Line")
-					snapLine.Thickness = 1
-					snaplineObjects[player] = snapLine
-				end
-				if onScreen then
-					snapLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-					snapLine.To = Vector2.new(screenPos.X, screenPos.Y)
-					if player.Team and player.Team.Name == "Killer" then
-						snapLine.Color = Color3.fromRGB(255, 45, 45) -- Killer: red
-					elseif player.Team and player.Team.Name == "Survivors" then
-						snapLine.Color = Color3.fromRGB(45, 130, 255) -- Survivor: blue
-					else
-						snapLine.Color = snaplineColor
-					end
-					snapLine.Visible = true
-				else
-					snapLine.Visible = false
-				end
+
+		local screenPos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+		if onScreen then
+			snapLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+			snapLine.To = Vector2.new(screenPos.X, screenPos.Y)
+			if player.Team and player.Team.Name == "Killer" then
+				snapLine.Color = TeamColors.Killer
+			elseif player.Team and player.Team.Name == "Survivors" then
+				snapLine.Color = TeamColors.Survivor
+			else
+				snapLine.Color = snaplineColor
 			end
+			snapLine.Visible = true
 		else
-			if snaplineObjects[player] then
-				snaplineObjects[player]:Remove()
-				snaplineObjects[player] = nil
-			end
+			snapLine.Visible = false
 		end
 	end
 end
 
-Players.PlayerRemoving:Connect(clearESP)
-RunService.RenderStepped:Connect(function()
-	if espEnabled or snaplineEspEnabled then updateESP() end
-end)
+Players.PlayerRemoving:Connect(clearSnapline)
 
 local ESPColorPresets = {
 	Red = Color3.fromRGB(255, 45, 45),
@@ -1182,7 +1073,7 @@ local function parseRGB(text)
 	return nil
 end
 
-local function createESPControls(label, defaultColor, setter)
+local function createESPControls(label, setter)
 	Visuals:CreateDropdown({
 		Name = label .. " Color Preset",
 		Options = {"Red", "Blue", "White", "Green", "Purple", "Yellow", "Cyan", "Orange", "Pink"},
@@ -1218,7 +1109,7 @@ end
 Visuals:CreateSection("Player Tracker Lines")
 Visuals:CreateToggle({
 	Name = "Enable Tracker Lines",
-	CurrentValue = true,
+	CurrentValue = false,
 	Flag = "TrackerLinesToggle",
 	Callback = function(value)
 		snaplineEspEnabled = value
@@ -1227,7 +1118,7 @@ Visuals:CreateToggle({
 				line.Visible = false
 			end
 		else
-			updateESP()
+			updateSnaplines()
 		end
 	end
 })
@@ -1235,43 +1126,43 @@ Visuals:CreateToggle({
 Visuals:CreateSection("Killer, Survivor & Map Object ESP")
 Visuals:CreateToggle({
 	Name = "ESP Survivor",
-	CurrentValue = true,
+	CurrentValue = false,
 	Flag = "EspSurvivorToggle",
 	Callback = function(v) ESP.Survivor = v end
 })
-createESPControls("Survivor", TeamColors.Survivor, function(c) TeamColors.Survivor = c end)
+createESPControls("Survivor", function(c) TeamColors.Survivor = c end)
 
 Visuals:CreateToggle({
 	Name = "ESP Killer",
-	CurrentValue = true,
+	CurrentValue = false,
 	Flag = "EspKillerToggle",
 	Callback = function(v) ESP.Killer = v end
 })
-createESPControls("Killer", TeamColors.Killer, function(c) TeamColors.Killer = c end)
+createESPControls("Killer", function(c) TeamColors.Killer = c end)
 
 Visuals:CreateToggle({
 	Name = "Generator ESP",
-	CurrentValue = true,
+	CurrentValue = false,
 	Flag = "EspGenToggle",
 	Callback = function(v) ESP.Generator = v end
 })
-createESPControls("Generator", GeneratorColor, function(c) GeneratorColor = c end)
+createESPControls("Generator", function(c) GeneratorColor = c end)
 
 Visuals:CreateToggle({
 	Name = "Pallet ESP",
-	CurrentValue = true,
+	CurrentValue = false,
 	Flag = "EspPalletToggle",
 	Callback = function(v) ESP.Pallet = v end
 })
-createESPControls("Pallet", PalletColor, function(c) PalletColor = c end)
+createESPControls("Pallet", function(c) PalletColor = c end)
 
 Visuals:CreateToggle({
 	Name = "Window ESP",
-	CurrentValue = true,
+	CurrentValue = false,
 	Flag = "EspWindowToggle",
 	Callback = function(v) ESP.Window = v end
 })
-createESPControls("Window", WindowColor, function(c) WindowColor = c end)
+createESPControls("Window", function(c) WindowColor = c end)
 
 Visuals:CreateSlider({
 	Name = "ESP Radius",
@@ -1300,7 +1191,10 @@ Visuals:CreateToggle({
 	Callback = function(value)
 		xrayEnabled = value
 		for _, object in ipairs(workspace:GetDescendants()) do
-			if object:IsA("BasePart") and LP.Character and not object:IsDescendantOf(LP.Character) and not object.Parent:FindFirstChildOfClass("Humanoid") then
+			if object:IsA("BasePart")
+				and LP.Character
+				and not object:IsDescendantOf(LP.Character)
+				and not object.Parent:FindFirstChildOfClass("Humanoid") then
 				object.LocalTransparencyModifier = xrayEnabled and 0.6 or 0
 			end
 		end
@@ -1337,25 +1231,7 @@ Visuals:CreateSlider({
 -- PERFORMANCE TAB
 -- =====================================================================
 local fpsBoostEnabled = false
-local autoBrightEnabled = false
 local showPerformanceOverlay = false
-
-local function applyLightingOpts()
-	if fpsBoostEnabled then
-		Lighting.GlobalShadows = false
-		Lighting.FogEnd = 100000
-	else
-		Lighting.GlobalShadows = originalLightingSettings.GlobalShadows
-		Lighting.FogEnd = originalLightingSettings.FogEnd
-	end
-	if autoBrightEnabled then
-		Lighting.Brightness = 3
-		Lighting.ClockTime = 14
-	else
-		Lighting.Brightness = originalLightingSettings.Brightness
-		Lighting.ClockTime = originalLightingSettings.ClockTime
-	end
-end
 
 Perf:CreateSection("Optimization")
 Perf:CreateToggle({
@@ -1364,41 +1240,17 @@ Perf:CreateToggle({
 	Flag = "FpsBoostToggle",
 	Callback = function(value)
 		fpsBoostEnabled = value
-		applyLightingOpts()
+		if fpsBoostEnabled then
+			Lighting.GlobalShadows = false
+			Lighting.FogEnd = 100000
+		elseif not fullbrightEnabled then
+			Lighting.GlobalShadows = originalLightingSettings.GlobalShadows
+			Lighting.FogEnd = originalLightingSettings.FogEnd
+		end
 	end
 })
 
-Perf:CreateToggle({
-	Name = "Auto Bright",
-	CurrentValue = false,
-	Flag = "AutoBrightToggle",
-	Callback = function(value)
-		autoBrightEnabled = value
-		applyLightingOpts()
-	end
-})
-
-local StatsGui = Instance.new("ScreenGui")
-StatsGui.Name = "IzttNickStats"
-StatsGui.ResetOnSpawn = false
-StatsGui.Parent = LP:WaitForChild("PlayerGui")
-
-local StatsLabel = Instance.new("TextLabel")
-StatsLabel.Name = "StatsLabel"
-StatsLabel.Size = UDim2.fromOffset(180, 26)
-StatsLabel.Position = UDim2.fromScale(0.01, 0.01)
-StatsLabel.BackgroundTransparency = 0.35
-StatsLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
-StatsLabel.TextColor3 = Color3.fromRGB(0, 255, 200)
-StatsLabel.TextSize = 13
-StatsLabel.Font = Enum.Font.Code
-StatsLabel.Text = "FPS: -- | Ping: --ms"
-StatsLabel.Visible = false
-StatsLabel.Parent = StatsGui
-
-local statsCorner = Instance.new("UICorner")
-statsCorner.CornerRadius = UDim.new(0, 6)
-statsCorner.Parent = StatsLabel
+local StatsGui, StatsLabel
 
 Perf:CreateToggle({
 	Name = "Show FPS & Ping Overlay",
@@ -1406,21 +1258,85 @@ Perf:CreateToggle({
 	Flag = "PerfOverlayToggle",
 	Callback = function(value)
 		showPerformanceOverlay = value
-		StatsLabel.Visible = value
+		if value and not StatsLabel then
+			task.spawn(function()
+				local guiParent = LP:FindFirstChild("PlayerGui") or LP:WaitForChild("PlayerGui", 10)
+				if not guiParent then return end
+				StatsGui = Instance.new("ScreenGui")
+				StatsGui.Name = "IzttNickStats"
+				StatsGui.ResetOnSpawn = false
+				StatsGui.Parent = guiParent
+
+				StatsLabel = Instance.new("TextLabel")
+				StatsLabel.Name = "StatsLabel"
+				StatsLabel.Size = UDim2.fromOffset(180, 26)
+				StatsLabel.Position = UDim2.fromScale(0.01, 0.01)
+				StatsLabel.BackgroundTransparency = 0.35
+				StatsLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+				StatsLabel.TextColor3 = Color3.fromRGB(0, 255, 200)
+				StatsLabel.TextSize = 13
+				StatsLabel.Font = Enum.Font.Code
+				StatsLabel.Text = "FPS: -- | Ping: --ms"
+				StatsLabel.Visible = showPerformanceOverlay
+				StatsLabel.Parent = StatsGui
+
+				local statsCorner = Instance.new("UICorner")
+				statsCorner.CornerRadius = UDim.new(0, 6)
+				statsCorner.Parent = StatsLabel
+			end)
+		elseif StatsLabel then
+			StatsLabel.Visible = value
+		end
 	end
 })
 
 local frameCount = 0
 local lastCheck = tick()
 RunService.RenderStepped:Connect(function()
+	if cameraFovEnabled and workspace.CurrentCamera then
+		workspace.CurrentCamera.FieldOfView = cameraFovValue
+	end
+
+	local mousePos = UIS:GetMouseLocation()
+	if FOVCircle then
+		pcall(function()
+			FOVCircle.Position = mousePos
+			FOVCircle.Radius = fovRadius
+			FOVCircle.Visible = showFOV and autoAimEnabled
+		end)
+	end
+
+	if autoAimEnabled and aimbotHold then
+		local target = getTargetPlayer()
+		if target then
+			local targetPosition = target.Position
+			local currentCFrame = Camera.CFrame
+			local newDirection = (targetPosition - currentCFrame.Position).Unit
+			local newCFrame = CFrame.new(currentCFrame.Position, currentCFrame.Position + newDirection)
+			Camera.CFrame = currentCFrame:Lerp(newCFrame, aimSmoothness)
+		end
+	end
+
+	if snaplineEspEnabled then
+		updateSnaplines()
+	end
+
+	if rainbowCrosshair and CrossLabel then
+		local hue = (tick() * 2) % 1
+		CrossLabel.TextColor3 = Color3.fromHSV(hue, 1, 1)
+	end
+
 	frameCount += 1
 	local now = tick()
 	if now - lastCheck >= 1 then
 		local fps = math.floor(frameCount / (now - lastCheck))
 		frameCount = 0
 		lastCheck = now
-		local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-		if showPerformanceOverlay then
+		if showPerformanceOverlay and StatsLabel then
+			local ping = 0
+			pcall(function()
+				ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+			end)
 			StatsLabel.Text = string.format("FPS: %d | Ping: %dms", fps, ping)
 		end
 	end
@@ -1429,31 +1345,39 @@ end)
 -- =====================================================================
 -- CROSSHAIR TAB
 -- =====================================================================
-local GUI = Instance.new("ScreenGui")
-GUI.Name = "IzttNickCrosshair"
-GUI.ResetOnSpawn = false
-GUI.IgnoreGuiInset = true
-GUI.Parent = LP:WaitForChild("PlayerGui")
+local GUI, CrossLabel
 
-local CrossLabel = Instance.new("TextLabel")
-CrossLabel.Name = "Crosshair"
-CrossLabel.Size = UDim2.fromOffset(30, 30)
-CrossLabel.Position = UDim2.fromScale(0.5, 0.5)
-CrossLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-CrossLabel.BackgroundTransparency = 1
-CrossLabel.Text = "+"
-CrossLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-CrossLabel.TextScaled = true
-CrossLabel.Font = Enum.Font.Code
-CrossLabel.Visible = false
-CrossLabel.Parent = GUI
+task.spawn(function()
+	local guiParent = LP:FindFirstChild("PlayerGui") or LP:WaitForChild("PlayerGui", 10)
+	if not guiParent then return end
+	GUI = Instance.new("ScreenGui")
+	GUI.Name = "IzttNickCrosshair"
+	GUI.ResetOnSpawn = false
+	GUI.IgnoreGuiInset = true
+	GUI.Parent = guiParent
+
+	CrossLabel = Instance.new("TextLabel")
+	CrossLabel.Name = "Crosshair"
+	CrossLabel.Size = UDim2.fromOffset(30, 30)
+	CrossLabel.Position = UDim2.fromScale(0.5, 0.5)
+	CrossLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	CrossLabel.BackgroundTransparency = 1
+	CrossLabel.Text = "+"
+	CrossLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+	CrossLabel.TextScaled = true
+	CrossLabel.Font = Enum.Font.Code
+	CrossLabel.Visible = false
+	CrossLabel.Parent = GUI
+end)
 
 Cross:CreateSection("Crosshair Customization")
 Cross:CreateToggle({
 	Name = "Show Crosshair",
 	CurrentValue = false,
 	Flag = "ShowCrosshairToggle",
-	Callback = function(value) CrossLabel.Visible = value end
+	Callback = function(value)
+		if CrossLabel then CrossLabel.Visible = value end
+	end
 })
 
 Cross:CreateDropdown({
@@ -1463,7 +1387,9 @@ Cross:CreateDropdown({
 	MultipleOptions = false,
 	Flag = "CrosshairStyleDropdown",
 	Callback = function(value)
-		CrossLabel.Text = type(value) == "table" and value[1] or value
+		if CrossLabel then
+			CrossLabel.Text = type(value) == "table" and value[1] or value
+		end
 	end
 })
 
@@ -1474,7 +1400,9 @@ Cross:CreateSlider({
 	Suffix = " px",
 	CurrentValue = 30,
 	Flag = "CrosshairSizeSlider",
-	Callback = function(value) CrossLabel.Size = UDim2.fromOffset(value, value) end
+	Callback = function(value)
+		if CrossLabel then CrossLabel.Size = UDim2.fromOffset(value, value) end
+	end
 })
 
 Cross:CreateDropdown({
@@ -1484,6 +1412,7 @@ Cross:CreateDropdown({
 	MultipleOptions = false,
 	Flag = "CrosshairColorDropdown",
 	Callback = function(value)
+		if not CrossLabel then return end
 		local choice = type(value) == "table" and value[1] or value
 		local colors = {
 			Green = Color3.fromRGB(0, 255, 0),
@@ -1503,20 +1432,11 @@ Cross:CreateToggle({
 	Callback = function(value) rainbowCrosshair = value end
 })
 
-RunService.RenderStepped:Connect(function()
-	if rainbowCrosshair and CrossLabel then
-		local hue = (tick() * 2) % 1
-		CrossLabel.TextColor3 = Color3.fromHSV(hue, 1, 1)
-	end
-end)
-
 -- =====================================================================
 -- TELEPORT TAB
 -- =====================================================================
 local selectedPlayerName = nil
-local followEnabled = false
 local followConnection = nil
-local spectateEnabled = false
 
 local function getPlayerList()
 	local playerNames = {}
@@ -1557,11 +1477,11 @@ TeleportTab:CreateButton({
 			return
 		end
 		local targetPlayer = Players:FindFirstChild(selectedPlayerName)
-		if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-			if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-				LP.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-				Notify("Teleport Success", "Teleported to " .. selectedPlayerName, 3)
-			end
+		local targetRoot = targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local myRoot = getRoot()
+		if targetRoot and myRoot then
+			myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3)
+			Notify("Teleport Success", "Teleported to " .. selectedPlayerName, 3)
 		else
 			Notify("Teleport Error", "Target player missing character.", 3)
 		end
@@ -1573,14 +1493,15 @@ TeleportTab:CreateToggle({
 	CurrentValue = false,
 	Flag = "LoopAttachToggle",
 	Callback = function(value)
-		followEnabled = value
 		if followConnection then followConnection:Disconnect() followConnection = nil end
-		if followEnabled then
+		if value then
 			followConnection = RunService.RenderStepped:Connect(function()
 				if selectedPlayerName then
 					local targetPlayer = Players:FindFirstChild(selectedPlayerName)
-					if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and root then
-						root.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 4)
+					local targetRoot = targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+					local myRoot = getRoot()
+					if targetRoot and myRoot then
+						myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 4)
 					end
 				end
 			end)
@@ -1593,14 +1514,14 @@ TeleportTab:CreateToggle({
 	CurrentValue = false,
 	Flag = "SpectateToggle",
 	Callback = function(value)
-		spectateEnabled = value
-		if spectateEnabled and selectedPlayerName then
+		if value and selectedPlayerName then
 			local targetPlayer = Players:FindFirstChild(selectedPlayerName)
-			if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
-				Camera.CameraSubject = targetPlayer.Character.Humanoid
+			local targetHum = targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if targetHum then
+				Camera.CameraSubject = targetHum
 			end
-		else
-			if humanoid then Camera.CameraSubject = humanoid end
+		elseif humanoid then
+			Camera.CameraSubject = humanoid
 		end
 	end
 })
@@ -1625,18 +1546,20 @@ TeleportTab:CreateButton({
 	Name = "Server Hop",
 	Callback = function()
 		Notify("Server Utility", "Searching for a new server...", 3)
-		local success, servers = pcall(function()
-			return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/0?sortOrder=Asc&limit=100"))
-		end)
-		if success and servers and servers.data then
-			for _, s in ipairs(servers.data) do
-				if s.playing < s.maxPlayers and s.id ~= game.JobId then
-					TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LP)
-					return
+		task.spawn(function()
+			local success, servers = pcall(function()
+				return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/0?sortOrder=Asc&limit=100"))
+			end)
+			if success and servers and servers.data then
+				for _, s in ipairs(servers.data) do
+					if s.playing < s.maxPlayers and s.id ~= game.JobId then
+						TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LP)
+						return
+					end
 				end
 			end
-		end
-		Notify("Server Hop Failed", "Could not find an available server.", 3)
+			Notify("Server Hop Failed", "Could not find an available server.", 3)
+		end)
 	end
 })
 
@@ -1656,7 +1579,7 @@ local selectedWaypointName = nil
 
 local function getWaypointList()
 	local names = {}
-	for name, _ in pairs(savedWaypoints) do
+	for name in pairs(savedWaypoints) do
 		table.insert(names, name)
 	end
 	if #names == 0 then table.insert(names, "No Waypoints Saved") end
@@ -1683,8 +1606,9 @@ WaypointTab:CreateButton({
 			Notify("Waypoint Error", "Type a name first.", 3)
 			return
 		end
-		if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-			savedWaypoints[waypointNameToSave] = LP.Character.HumanoidRootPart.CFrame
+		local myRoot = getRoot()
+		if myRoot then
+			savedWaypoints[waypointNameToSave] = myRoot.CFrame
 			WaypointDropdown:Refresh(getWaypointList())
 			saveWaypoints()
 			Notify("Waypoint Saved", "Saved as '" .. waypointNameToSave .. "'", 3)
@@ -1710,8 +1634,9 @@ WaypointTab:CreateButton({
 			Notify("Teleport Error", "Select a valid waypoint first.", 3)
 			return
 		end
-		if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-			LP.Character.HumanoidRootPart.CFrame = savedWaypoints[selectedWaypointName]
+		local myRoot = getRoot()
+		if myRoot then
+			myRoot.CFrame = savedWaypoints[selectedWaypointName]
 			Notify("Teleport Success", "Teleported to: " .. selectedWaypointName, 3)
 		end
 	end
@@ -1773,8 +1698,6 @@ UIS.InputBegan:Connect(function(input, processed)
 		setFly(not flying)
 	elseif input.KeyCode == keybinds.Noclip then
 		noclipEnabled = not noclipEnabled
-	elseif input.KeyCode == healKey then
-		useHeal()
 	elseif input.KeyCode == Enum.KeyCode.P then
 		setFullbright(not fullbrightEnabled)
 		if fullbrightToggle then fullbrightToggle:Set(fullbrightEnabled) end
@@ -1790,4 +1713,4 @@ UIS.InputEnded:Connect(function(input)
 	end
 end)
 
-Notify("IzttNick Hub Loaded", "Rayfield UI ready! K = Hub, E = Heal, Y = FOV, P = Fullbright.", 4)
+Notify("IzttNick Hub Loaded", "Rayfield UI ready! All toggles OFF by default.", 4)
